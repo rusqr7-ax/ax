@@ -78,6 +78,10 @@
     }
     .input-field:focus { border-color: var(--text-main); }
 
+    button, select, input[type="button"], input[type="submit"] {
+       cursor: pointer;
+    }
+
     .btn {
       background: transparent;
       color: var(--text-main);
@@ -89,7 +93,9 @@
       letter-spacing: 1px;
       transition: all 0.2s;
       display: inline-flex; align-items: center; justify-content: center;
+      user-select: none;
     }
+    .btn:active { transform: translateY(1px); }
     .btn:hover { background: var(--text-main); color: var(--bg-color); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-primary { background: var(--text-main); color: var(--bg-color); font-weight: 600; }
@@ -437,8 +443,20 @@
 
     // --- 2. GLOBAL STATE ---
     let currentUser = null;
+    let globalEmployees = [];
+    let globalShiftTypes = [];
+    let globalMerch = [];
 
     // --- 3. HELPER FUNCTIONS (API) ---
+    async function preloadGlobalData() {
+      const [emp, shifts] = await Promise.all([
+        supabase.from('employees').select('*').order('full_name'),
+        supabase.from('shifts').select('*').order('id')
+      ]);
+      globalEmployees = emp.data || [];
+      globalShiftTypes = shifts.data || [];
+    }
+
     async function loginUser(login, password) {
       const { data, error } = await supabase
         .from('employees')
@@ -463,21 +481,35 @@
     }
 
     async function getAllEmployees() {
+      if (globalEmployees.length > 0) return globalEmployees;
       const { data } = await supabase.from('employees').select('*').order('full_name');
-      return data || [];
+      globalEmployees = data || [];
+      return globalEmployees;
     }
     
     async function createEmployee(data) {
-      return await supabase.from('employees').insert(data);
+      const res = await supabase.from('employees').insert(data);
+      if (!res.error) {
+         // Refresh cache
+         const { data: newData } = await supabase.from('employees').select('*').order('full_name');
+         globalEmployees = newData || [];
+      }
+      return res;
     }
     
     async function deleteEmployee(id) {
-      return await supabase.from('employees').delete().eq('id', id);
+      const res = await supabase.from('employees').delete().eq('id', id);
+      if (!res.error) {
+         globalEmployees = globalEmployees.filter(e => e.id !== id);
+      }
+      return res;
     }
     
     async function getShiftTypes() {
+      if (globalShiftTypes.length > 0) return globalShiftTypes;
       const { data } = await supabase.from('shifts').select('*').order('id');
-      return data || [];
+      globalShiftTypes = data || [];
+      return globalShiftTypes;
     }
 
     async function getMerchItems() {
@@ -619,10 +651,12 @@
       }
 
       async init() {
-        this.container.innerHTML = '<div class="loader">Загрузка графика...</div>';
-        const [employees, shifts] = await Promise.all([ getAllEmployees(), getShiftTypes() ]);
-        this.employees = employees;
-        this.shiftTypes = shifts;
+        this.container.innerHTML = '<div class="loader">Загрузка...</div>';
+        
+        // Use global cached data
+        this.employees = await getAllEmployees();
+        this.shiftTypes = await getShiftTypes();
+        
         this.renderControls();
         await this.loadMonthData();
       }
@@ -894,6 +928,9 @@
 
     // --- APP LOGIC ---
     async function initApp() {
+      // Preload data in background
+      preloadGlobalData();
+
       // Header Info
       document.getElementById('headerLogin').textContent = currentUser.full_name;
       const roles = { 'director': 'Директор', 'senior_seller': 'Старший продавец', 'seller': 'Продавец' };
