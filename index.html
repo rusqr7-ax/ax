@@ -468,7 +468,14 @@
     // --- 1. SUPABASE CONFIG ---
     const SUPABASE_URL = 'https://uuhsjusmhmmjceujzoiw.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1aHNqdXNtaG1tamNldWp6b2l3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU2MDU0MTUsImV4cCI6MjA4MTE4MTQxNX0.zaOtLcZGoNV77AiLrbODv3gIamlHWh8QwbBdWeOfJLw';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let supabase = null;
+    try {
+      if (window.supabase && typeof window.supabase.createClient === 'function') {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      }
+    } catch (e) {
+      console.warn('Supabase init failed:', e);
+    }
 
     // --- 2. GLOBAL STATE ---
     let currentUser = null;
@@ -478,16 +485,18 @@
 
     // --- 3. HELPER FUNCTIONS (API) ---
     async function preloadGlobalData() {
-      // Parallel fetch
-      const [emp, shifts] = await Promise.all([
-        supabase.from('employees').select('*').order('full_name'),
-        supabase.from('shifts').select('*').order('id')
-      ]);
-      globalEmployees = emp.data || [];
-      globalShiftTypes = shifts.data || [];
+      if (!supabase) { globalEmployees = []; globalShiftTypes = []; return; }
+       // Parallel fetch
+       const [emp, shifts] = await Promise.all([
+         supabase.from('employees').select('*').order('full_name'),
+         supabase.from('shifts').select('*').order('id')
+       ]);
+       globalEmployees = emp.data || [];
+       globalShiftTypes = shifts.data || [];
     }
 
     async function loginUser(login, password) {
+      if (!supabase) throw new Error('Нет соединения с сервером');
       const { data, error } = await supabase
         .from('employees')
         .select('*')
@@ -512,12 +521,14 @@
 
     async function getAllEmployees() {
       if (globalEmployees.length > 0) return globalEmployees;
+      if (!supabase) { globalEmployees = []; return globalEmployees; }
       const { data } = await supabase.from('employees').select('*').order('full_name');
       globalEmployees = data || [];
       return globalEmployees;
     }
     
     async function createEmployee(data) {
+      if (!supabase) return { error: { message: 'Нет соединения' } };
       const res = await supabase.from('employees').insert(data);
       if (!res.error) {
          // Refresh cache
@@ -528,6 +539,7 @@
     }
     
     async function deleteEmployee(id) {
+      if (!supabase) return { error: { message: 'Нет соединения' } };
       const res = await supabase.from('employees').delete().eq('id', id);
       if (!res.error) {
          globalEmployees = globalEmployees.filter(e => e.id !== id);
@@ -537,21 +549,25 @@
     
     async function getShiftTypes() {
       if (globalShiftTypes.length > 0) return globalShiftTypes;
+      if (!supabase) { globalShiftTypes = []; return globalShiftTypes; }
       const { data } = await supabase.from('shifts').select('*').order('id');
       globalShiftTypes = data || [];
       return globalShiftTypes;
     }
 
     async function getMerchItems() {
+      if (!supabase) return [];
       const { data } = await supabase.from('merch_items').select('*');
       return data || [];
     }
     
     async function createMerchItem(title, url) {
+      if (!supabase) return { error: { message: 'Нет соединения' } };
       return await supabase.from('merch_items').insert({ title, image_url: url });
     }
     
     async function uploadFile(bucket, file) {
+      if (!supabase) throw new Error('Нет соединения');
       const ext = file.name.split('.').pop();
       const path = `${Math.random()}.${ext}`;
       await supabase.storage.from(bucket).upload(path, file);
@@ -1256,4 +1272,3 @@
   </script>
 </body>
 </html>
-
