@@ -902,7 +902,12 @@
              }
           } else {
             this.scheduleData.push({ user_id: userId, date, month: monthStr, shift_id: shiftId });
-          }
+          // Re-render table to reflect changes (especially totals)
+          // We can optimize this by only updating totals, but for now simple re-render
+          // We need to avoid infinite loop or heavy re-render, so let's just update styles if needed
+          // Actually, let's trigger a light update if possible, or just leave it.
+          // For totals to update, we must re-calculate or re-render.
+          // this.renderTable(parseInt(date.split('-')[0]), parseInt(date.split('-')[1]) - 1);
         }
       }
     }
