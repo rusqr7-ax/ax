@@ -1150,25 +1150,34 @@
         const btnCreate = document.getElementById('btnCreateUser');
         if(btnCreate) btnCreate.onclick = createUserHandler;
 
-        // 1S Search
-        const searchInput = document.querySelector('#tab-1s .search-input');
-        const list = document.querySelector('#tab-1s .list-group');
-        async function load1S(q='') {
-           list.innerHTML = '<div class="loader">Поиск...</div>';
-           let query = supabase.from('manuals').select('*').order('title');
-           if(q) query = query.ilike('title', `%${q}%`);
-           const { data } = await query;
-           list.innerHTML = '';
-           if(!data || !data.length) { list.innerHTML = '<div>Ничего не найдено</div>'; return; }
-           data.forEach(item => {
-             const el = document.createElement('div'); el.style.padding='10px'; el.style.borderBottom='1px solid #333'; el.style.cursor='pointer';
-             el.textContent = item.title;
-             el.onclick = () => alert(item.content || 'Пусто');
-             list.appendChild(el);
-           });
+      // 1S Search - SAFE INIT
+      try {
+        const tab1S = document.getElementById('tab-1s');
+        if (tab1S) {
+            const searchInput = tab1S.querySelector('.search-input');
+            const list = tab1S.querySelector('.list-group');
+            if (searchInput && list) {
+                const load1S = async (q='') => {
+                   list.innerHTML = '<div class="loader">Поиск...</div>';
+                   let query = supabase.from('manuals').select('*').order('title');
+                   if(q) query = query.ilike('title', `%${q}%`);
+                   const { data } = await query;
+                   list.innerHTML = '';
+                   if(!data || !data.length) { list.innerHTML = '<div>Ничего не найдено</div>'; return; }
+                   data.forEach(item => {
+                     const el = document.createElement('div'); el.style.padding='10px'; el.style.borderBottom='1px solid #333'; el.style.cursor='pointer';
+                     el.textContent = item.title;
+                     el.onclick = () => alert(item.content || 'Пусто');
+                     list.appendChild(el);
+                   });
+                };
+                load1S();
+                searchInput.addEventListener('input', (e) => load1S(e.target.value));
+            }
         }
-        load1S();
-        searchInput.addEventListener('input', (e) => load1S(e.target.value));
+      } catch (err) {
+         console.warn('1S module init error', err);
+      }
 
       } catch (err) {
         console.error('INIT ERROR:', err);
