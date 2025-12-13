@@ -6,23 +6,48 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-export async function getCurrentUser() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  
-  // ÐŸÐ¾Ð´Ð³Ñ€ÑƒÐ¶Ð°ÐµÐ¼ Ñ€Ð¾Ð»ÑŒ Ð¸Ð· profiles
-  const { data } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).single();
-  return { ...user, ...data };
-}
+// --- КАСТОМНАЯ АВТОРИЗАЦИЯ ---
 
-export async function getUserProfile(userId) {
-  const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+export async function loginUser(login, password) {
+  // Ищем пользователя в таблице employees
+  const { data, error } = await supabase
+    .from('employees')
+    .select('*')
+    .eq('login', login)
+    .eq('password', password) // Сверяем пароль прямо в запросе
+    .single();
+
+  if (error || !data) {
+    throw new Error('Неверный логин или пароль');
+  }
+
+  // Сохраняем в LocalStorage (наша сессия)
+  localStorage.setItem('ax_user', JSON.stringify(data));
   return data;
 }
 
-export async function getAllProfiles() {
-  const { data } = await supabase.from('profiles').select('*').order('full_name');
+export function getCurrentUser() {
+  const userStr = localStorage.getItem('ax_user');
+  return userStr ? JSON.parse(userStr) : null;
+}
+
+export function logoutUser() {
+  localStorage.removeItem('ax_user');
+}
+
+// --- РАБОТА С ДАННЫМИ ---
+
+export async function getAllEmployees() {
+  const { data } = await supabase.from('employees').select('*').order('full_name');
   return data || [];
+}
+
+export async function createEmployee(data) {
+  return await supabase.from('employees').insert(data);
+}
+
+export async function deleteEmployee(id) {
+  return await supabase.from('employees').delete().eq('id', id);
 }
 
 export async function getShiftTypes() {
@@ -30,42 +55,22 @@ export async function getShiftTypes() {
   return data || [];
 }
 
-// Ð¤ÑƒÐ½ÐºÑ†Ð¸Ñ Ð¾Ð±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¸Ñ Ñ€Ð¾Ð»Ð¸ (Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð´Ð»Ñ Ð°Ð´Ð¼Ð¸Ð½Ð°, Ð·Ð°Ñ‰Ð¸Ñ‰ÐµÐ½Ð¾ RLS)
-export async function updateUserRole(userId, newRole) {
-  return await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
-}
-
-// --- ÐÀÁÎÒÀ Ñ ÊÎÍÒÅÍÒÎÌ ---
-
-// Ïîëó÷èòü ìåð÷ (ôîòî)
+// Контент (старое)
 export async function getMerchItems() {
-  const { data } = await supabase.from('merch_items').select('*').order('created_at', { ascending: false });
+  const { data } = await supabase.from('merch_items').select('*');
   return data || [];
 }
-
-// Ïîëó÷èòü âèäåî-èíñòðóêöèè
 export async function getVideos() {
-  const { data } = await supabase.from('videos').select('*').order('created_at', { ascending: false });
+  const { data } = await supabase.from('videos').select('*');
   return data || [];
 }
-
-// Çàãðóçêà ôàéëà â Storage (bucket: photos/videos/docs)
 export async function uploadFile(bucket, file) {
-  const fileExt = file.name.split('.').pop();
-  const fileName = \\.\\;
-  const filePath = \\\;
-
-  const { data, error } = await supabase.storage.from(bucket).upload(filePath, file);
-  
-  if (error) throw error;
-  
-  // Ïîëó÷àåì ïóáëè÷íóþ ññûëêó
-  const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(filePath);
-  return publicUrl;
+  const ext = file.name.split('.').pop();
+  const path = `${Math.random()}.${ext}`;
+  await supabase.storage.from(bucket).upload(path, file);
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data.publicUrl;
 }
-
-// Ñîçäàòü çàïèñü î ìåð÷å
-export async function createMerchItem(title, imageUrl) {
-  return await supabase.from('merch_items').insert({ title, image_url: imageUrl });
+export async function createMerchItem(title, url) {
+  return await supabase.from('merch_items').insert({ title, image_url: url });
 }
-
