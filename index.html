@@ -244,11 +244,13 @@
       font-weight: bold;
       cursor: pointer;
       appearance: none;
+      font-size: 11px; /* Чуть меньше шрифт, чтобы влезло время */
+      padding: 0;
     }
     .cell-input:focus { background: #333; outline: none; }
     
     .cell-b { background: #e3f2fd !important; color: #1565c0 !important; font-weight: 800; } /* Выходной - Синий */
-    .cell-work { color: var(--text-main); }
+    .cell-work { color: var(--text-main); font-weight: 600; }
     
     /* Legend */
     .legend-grid {
@@ -389,7 +391,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="schedule">График</button>
       <button class="tab" data-tab="operations">Операции</button>
-      <button class="tab" data-tab="1s">1С</button>
+      <button class="tab" data-tab="tab-1s">1С</button>
       <button class="tab" data-tab="merch">Мерч</button>
       <button class="tab" data-tab="admin" id="adminTab" style="display:none">Сотрудники</button>
     </div>
@@ -417,7 +419,7 @@
     </div>
 
     <!-- CONTENT: 1S -->
-    <div class="tab-content" id="1s">
+    <div class="tab-content" id="tab-1s">
       <h2>Инструкции 1С</h2>
       <input type="text" class="input-field search-input" placeholder="Поиск инструкций...">
       <div class="list-group" style="margin-top: 20px;"></div>
@@ -823,10 +825,18 @@
                 
                 this.shiftTypes.forEach(st => {
                   const opt = document.createElement('option');
-                  opt.value = st.id; opt.textContent = st.id; 
+                  opt.value = st.id; 
+                  // Show time in the dropdown for clarity
+                  opt.textContent = `${st.id} | ${st.start_time.slice(0,5)}-${st.end_time.slice(0,5)}`; 
                   if (String(st.id) === String(shiftId)) opt.selected = true;
                   select.appendChild(opt);
                 });
+                
+                // Add tooltip
+                if (shiftId) {
+                   const s = this.shiftTypes.find(x => x.id === shiftId);
+                   if (s) select.title = `Смена ${s.id}: ${s.start_time.slice(0,5)} - ${s.end_time.slice(0,5)}`;
+                }
                 
                 select.onchange = (e) => this.handleShiftChange(e.target);
                 td.appendChild(select);
@@ -835,7 +845,17 @@
                 const div = document.createElement('div');
                 div.className = `cell-input ${shiftId ? 'cell-work' : 'cell-b'}`;
                 div.style.cursor = 'default';
-                div.textContent = shiftId || 'B';
+                
+                if (shiftId) {
+                   const s = this.shiftTypes.find(x => x.id === shiftId);
+                   // Show ID + Time for sellers too
+                   div.textContent = s ? `${s.id}` : shiftId;
+                   if (s) div.title = `${s.start_time.slice(0,5)} - ${s.end_time.slice(0,5)}`;
+                   div.style.fontSize = '11px';
+                } else {
+                   div.textContent = 'B';
+                }
+                
                 td.appendChild(div);
             }
             
@@ -1131,8 +1151,8 @@
         if(btnCreate) btnCreate.onclick = createUserHandler;
 
         // 1S Search
-        const searchInput = document.querySelector('#1s .search-input');
-        const list = document.querySelector('#1s .list-group');
+        const searchInput = document.querySelector('#tab-1s .search-input');
+        const list = document.querySelector('#tab-1s .list-group');
         async function load1S(q='') {
            list.innerHTML = '<div class="loader">Поиск...</div>';
            let query = supabase.from('manuals').select('*').order('title');
