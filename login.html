@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Вход в AX</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { display: flex; align-items: center; justify-content: center; height: 100vh; padding: 0; }
+    .login-card { width: 100%; max-width: 400px; text-align: center; }
+    .logo { font-size: 48px; font-weight: 800; margin-bottom: 20px; 
+      background: var(--bg-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  </style>
+</head>
+<body>
+  <div class="container login-card">
+    <div class="logo">AX</div>
+    <h2>Вход в систему</h2>
+    <p style="margin-bottom: 20px; color: #666;">Введите данные сотрудника</p>
+    
+    <input type="email" id="email" placeholder="Email" class="input-field">
+    <input type="password" id="password" placeholder="Пароль" class="input-field">
+    
+    <button class="btn btn-primary" style="width: 100%; margin-top: 10px;" id="btnLogin">Войти</button>
+    <div id="errorMsg" style="color: red; margin-top: 10px; font-size: 14px;"></div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '../js/supabaseClient.js';
+
+    document.getElementById('btnLogin').onclick = async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const btn = document.getElementById('btnLogin');
+      const err = document.getElementById('errorMsg');
+
+      if (!email || !password) {
+        err.textContent = 'Заполните все поля';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Входим...';
+      err.textContent = '';
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        err.textContent = 'Ошибка: ' + error.message;
+        btn.disabled = false;
+        btn.textContent = 'Войти';
+      } else {
+        window.location.href = 'index.html';
+      }
+    };
+  </script>
+</body>
+</html>
