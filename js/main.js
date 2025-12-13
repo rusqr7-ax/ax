@@ -9,154 +9,177 @@ import {
 
 let currentUser = null;
 
+// Ждем полной загрузки DOM
 document.addEventListener('DOMContentLoaded', async () => {
-  currentUser = await getCurrentUser();
+  console.log('DOM Loaded. Checking auth...');
   
-  if (currentUser) {
-    initApp();
-  } else {
-    window.location.href = 'login.html';
+  try {
+    currentUser = await getCurrentUser();
+  } catch (err) {
+    console.error('Auth Check Failed:', err);
   }
 
+  // Сначала инициализируем вкладки, чтобы UI работал сразу
   initTabs();
+
+  if (currentUser) {
+    console.log('User logged in:', currentUser.email);
+    // Грузим данные
+    try {
+      await initApp();
+    } catch (e) {
+      console.error('App init error:', e);
+    }
+  } else {
+    console.log('No user, redirecting to login...');
+    window.location.href = 'login.html';
+  }
 });
 
 function initTabs() {
+  console.log('Initializing Tabs...');
   const tabs = document.querySelectorAll('.tab');
   const contents = document.querySelectorAll('.tab-content');
 
   tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      // 1. Убираем класс active у всех
-      tabs.forEach(t => t.classList.remove('active'));
-      contents.forEach(c => c.classList.remove('active'));
+    // Удаляем старые слушатели (на всякий случай, через клонирование)
+    const newTab = tab.cloneNode(true);
+    tab.parentNode.replaceChild(newTab, tab);
+  });
 
-      // 2. Добавляем текущему
+  // Заново ищем (так как заменили DOM элементы)
+  const freshTabs = document.querySelectorAll('.tab');
+  
+  freshTabs.forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      e.preventDefault(); // На всякий случай
+      const targetId = tab.getAttribute('data-tab'); // Используем getAttribute для надежности
+      console.log('Tab Clicked:', targetId);
+
+      // Снимаем активность
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      // Ставим активность
       tab.classList.add('active');
-      const targetId = tab.getAttribute('data-tab');
-      const targetContent = document.getElementById(targetId);
-      
-      if (targetContent) {
-        targetContent.classList.add('active');
+      const content = document.getElementById(targetId);
+      if (content) {
+        content.classList.add('active');
       } else {
-        console.warn(`Tab content not found for: ${targetId}`);
+        console.error('No content for tab:', targetId);
       }
     });
   });
 
-  // Безопасное назначение событий
-  safeOnClick('viewMySched', () => switchScheduleView('my'));
-  safeOnClick('viewTeamSched', () => switchScheduleView('team'));
-  safeOnClick('btnCreateUser', createUserHandler);
+  // Остальные кнопки...
+  const btnMy = document.getElementById('viewMySched');
+  const btnTeam = document.getElementById('viewTeamSched');
   
-  safeOnClick('logoutBtn', async () => {
-    await supabase.auth.signOut();
-    window.location.href = 'login.html';
-  });
+  if (btnMy) {
+    btnMy.onclick = () => {
+      document.getElementById('myScheduleView').style.display = 'block';
+      document.getElementById('teamScheduleView').style.display = 'none';
+      btnMy.classList.add('active');
+      if(btnTeam) btnTeam.classList.remove('active');
+    };
+  }
 
-  // Кнопка загрузки мерча
+  if (btnTeam) {
+    btnTeam.onclick = () => {
+      document.getElementById('myScheduleView').style.display = 'none';
+      document.getElementById('teamScheduleView').style.display = 'block';
+      btnTeam.classList.add('active');
+      if(btnMy) btnMy.classList.remove('active');
+    };
+  }
+
+  // Кнопка выхода
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.onclick = async () => {
+      console.log('Logging out...');
+      await supabase.auth.signOut();
+      window.location.href = 'login.html';
+    };
+  }
+
+  // Загрузка мерча (только если есть кнопка)
   const btnUpload = document.getElementById('btnUploadMerch');
   const inputUpload = document.getElementById('uploadMerchInput');
-  
   if (btnUpload && inputUpload) {
     btnUpload.onclick = () => inputUpload.click();
     inputUpload.onchange = handleMerchUpload;
   }
 }
 
-function safeOnClick(id, handler) {
-  const el = document.getElementById(id);
-  if (el) el.onclick = handler;
-}
-
-function switchScheduleView(mode) {
-  const myView = document.getElementById('myScheduleView');
-  const teamView = document.getElementById('teamScheduleView');
-  const btnMy = document.getElementById('viewMySched');
-  const btnTeam = document.getElementById('viewTeamSched');
-
-  if (mode === 'my') {
-    if(myView) myView.style.display = 'block';
-    if(teamView) teamView.style.display = 'none';
-    if(btnMy) btnMy.classList.add('active');
-    if(btnTeam) btnTeam.classList.remove('active');
-  } else {
-    if(myView) myView.style.display = 'none';
-    if(teamView) teamView.style.display = 'block';
-    if(btnMy) btnMy.classList.remove('active');
-    if(btnTeam) btnTeam.classList.add('active');
-  }
-}
-
 async function initApp() {
-  console.log('App init for:', currentUser.email);
+  // Заполняем шапку
+  const headerInfo = document.getElementById('headerUserInfo');
+  if (headerInfo) {
+    headerInfo.style.display = 'flex';
+    document.getElementById('headerName').textContent = currentUser.full_name || currentUser.email;
+    
+    const roles = { 'director': 'Директор', 'senior_seller': 'Старший', 'seller': 'Продавец' };
+    document.getElementById('headerRole').textContent = roles[currentUser.role] || 'Сотрудник';
+  }
 
-  document.getElementById('userName').textContent = currentUser.full_name || currentUser.email;
-  document.getElementById('userRole').textContent = currentUser.role || 'Сотрудник';
-  document.getElementById('userAvatar').textContent = (currentUser.full_name || 'U')[0].toUpperCase();
-
+  // Проверка прав админа
   const isAdmin = ['director', 'senior_seller'].includes(currentUser.role);
-
+  
   if (isAdmin) {
     const adminTab = document.getElementById('adminTab');
-    const uploadBtn = document.getElementById('btnUploadMerch');
-    
     if (adminTab) adminTab.style.display = 'block';
-    if (uploadBtn) uploadBtn.style.display = 'block';
     
+    // Загружаем список сотрудников
     loadUsersTable();
     
+    // Инициализируем Админский График
     const scheduleManager = new ScheduleManager('schedule-manager');
     await scheduleManager.init();
   } else {
+    // Скрываем кнопку общего графика для обычных
     const teamBtn = document.getElementById('viewTeamSched');
     if (teamBtn) teamBtn.style.display = 'none';
   }
 
-  const calendar = new Calendar('calendar-wrapper');
+  // Личный календарь
+  if (document.getElementById('calendar-wrapper')) {
+    const calendar = new Calendar('calendar-wrapper');
+  }
 
+  // Контент
   loadContent();
   initOneS();
 }
+
+// --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 
 async function loadContent() {
   // Мерч
   const merchGrid = document.getElementById('merchGrid');
   if (merchGrid) {
     const items = await getMerchItems();
-    if (items.length === 0) {
-      merchGrid.innerHTML = '<p style="grid-column: 1/-1; text-align: center;">Нет фото. Загрузите первое!</p>';
-    } else {
-      merchGrid.innerHTML = '';
-      items.forEach(item => {
-        const el = document.createElement('div');
-        el.className = 'photo-card';
-        el.style.backgroundImage = `url('${item.image_url}')`;
-        el.innerHTML = `<div class="photo-title">${item.title}</div>`;
-        merchGrid.appendChild(el);
-      });
-    }
+    merchGrid.innerHTML = items.length ? '' : '<p style="text-align:center;width:100%">Нет фото</p>';
+    items.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'photo-card';
+      el.style.backgroundImage = `url('${item.image_url}')`;
+      el.innerHTML = `<div class="photo-title">${item.title}</div>`;
+      merchGrid.appendChild(el);
+    });
   }
 
   // Видео
   const videoGrid = document.getElementById('videoGrid');
   if (videoGrid) {
     const videos = await getVideos();
-    if (videos.length === 0) {
-      videoGrid.innerHTML = '<p style="grid-column: 1/-1; text-align: center;">Нет видео-инструкций.</p>';
-    } else {
-      videoGrid.innerHTML = '';
-      videos.forEach(v => {
-        const el = document.createElement('div');
-        el.className = 'card op-card';
-        el.innerHTML = `
-          <h3>${v.title}</h3>
-          <p>Категория: ${v.category}</p>
-          <a href="${v.video_url}" target="_blank" class="btn btn-primary btn-sm">Смотреть</a>
-        `;
-        videoGrid.appendChild(el);
-      });
-    }
+    videoGrid.innerHTML = videos.length ? '' : '<p style="text-align:center;width:100%">Нет видео</p>';
+    videos.forEach(v => {
+      const el = document.createElement('div');
+      el.className = 'card op-card';
+      el.innerHTML = `<h3>${v.title}</h3><a href="${v.video_url}" target="_blank" class="btn btn-primary btn-sm">Смотреть</a>`;
+      videoGrid.appendChild(el);
+    });
   }
 }
 
@@ -165,26 +188,24 @@ async function handleMerchUpload(e) {
   if (!file) return;
 
   const btn = document.getElementById('btnUploadMerch');
-  const originalText = btn.textContent;
-  btn.textContent = 'Загрузка...';
+  const oldText = btn.textContent;
+  btn.textContent = '...';
   btn.disabled = true;
 
   try {
-    const publicUrl = await uploadFile('photos', file);
-    const title = prompt('Название фото (например "Полка с водой"):', 'Новое фото');
+    const url = await uploadFile('photos', file);
+    const title = prompt('Название:', 'Фото');
     if (title) {
-      const { error } = await createMerchItem(title, publicUrl);
-      if (error) throw error;
-      alert('Фото успешно загружено!');
-      loadContent(); 
+      await createMerchItem(title, url);
+      alert('Готово');
+      loadContent();
     }
   } catch (err) {
-    console.error(err);
-    alert('Ошибка загрузки: ' + err.message);
+    alert('Ошибка: ' + err.message);
   } finally {
-    btn.textContent = originalText;
+    btn.textContent = oldText;
     btn.disabled = false;
-    e.target.value = ''; 
+    e.target.value = '';
   }
 }
 
@@ -192,59 +213,29 @@ async function loadUsersTable() {
   const tbody = document.querySelector('#usersTable tbody');
   if (!tbody) return;
   
-  tbody.innerHTML = '<tr><td colspan="3">Загрузка...</td></tr>';
-  
   const profiles = await getAllProfiles();
   tbody.innerHTML = '';
-
+  
   profiles.forEach(p => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${p.full_name || 'Без имени'}</td>
+      <td>${p.full_name || '...'}</td>
       <td>
-        <select onchange="updateRole('${p.id}', this.value)" class="input-field" style="margin:0; padding: 4px;">
+        <select onchange="updateRole('${p.id}', this.value)" class="input-field" style="margin:0;padding:5px;">
           <option value="seller" ${p.role==='seller'?'selected':''}>Продавец</option>
           <option value="senior_seller" ${p.role==='senior_seller'?'selected':''}>Старший</option>
           <option value="director" ${p.role==='director'?'selected':''}>Директор</option>
         </select>
       </td>
-      <td>
-        <button class="btn btn-sm" style="color:var(--error-color);">Удалить</button>
-      </td>
+      <td><button class="btn btn-sm" style="color:red">X</button></td>
     `;
     tbody.appendChild(tr);
   });
 }
 
+// Экспорт для HTML
 window.updateRole = async (uid, role) => {
   const { error } = await updateUserRole(uid, role);
-  if (error) alert('Ошибка обновления: ' + error.message);
-  else alert('Роль обновлена!');
+  if (error) alert(error.message);
+  else alert('Роль изменена');
 };
-
-async function createUserHandler() {
-  const email = document.getElementById('newUserEmail').value;
-  const password = document.getElementById('newUserPass').value;
-  const fullName = document.getElementById('newUserName').value;
-  const role = document.getElementById('newUserRole').value;
-
-  if (!email || !password) return alert('Введите email и пароль');
-
-  if(!confirm('Внимание: После создания вы будете переключены на нового пользователя. Продолжить?')) return;
-
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { full_name: fullName }
-    }
-  });
-
-  if (error) {
-    alert('Ошибка: ' + error.message);
-  } else {
-    alert('Пользователь создан! Обновите роль в админке, если нужно.');
-    document.getElementById('modalUser').style.display = 'none';
-    window.location.reload();
-  }
-}
