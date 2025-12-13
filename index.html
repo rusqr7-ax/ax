@@ -476,6 +476,7 @@
 
     // --- 3. HELPER FUNCTIONS (API) ---
     async function preloadGlobalData() {
+      // Parallel fetch
       const [emp, shifts] = await Promise.all([
         supabase.from('employees').select('*').order('full_name'),
         supabase.from('shifts').select('*').order('id')
@@ -879,20 +880,24 @@
         const monthStr = date.slice(0, 7);
         
         // Optimistic UI update
-        select.className = `cell-input ${shiftId ? 'cell-work' : 'cell-b'} saving`;
+        if (select.tagName === 'SELECT') {
+             select.className = `cell-input ${shiftId ? 'cell-work' : 'cell-b'} saving`;
+        }
 
         const { error } = await supabase.from('schedule').upsert({
           user_id: userId, date: date, month: monthStr, shift_id: shiftId, is_day_off: !shiftId
         }, { onConflict: 'user_id, date' });
 
-        if (error) { alert('Ошибка!'); select.classList.add('error'); }
+        if (error) { 
+            alert('Ошибка!'); 
+            if (select.classList) select.classList.add('error'); 
+        }
         else {
-          select.classList.remove('saving');
+          if (select.classList) select.classList.remove('saving');
           // Update cache
           const idx = this.scheduleData.findIndex(s => s.user_id === userId && s.date === date);
           if (idx >= 0) {
              if (shiftId === null) {
-                 // Remove or update to null
                  this.scheduleData[idx].shift_id = null;
              } else {
                  this.scheduleData[idx].shift_id = shiftId;
@@ -900,10 +905,6 @@
           } else {
             this.scheduleData.push({ user_id: userId, date, month: monthStr, shift_id: shiftId });
           }
-          // Re-render to update totals? Or just leave it until refresh
-          // For simplicity, let's re-render table to update totals row
-          // this.renderTable(this.currentDate.getFullYear(), this.currentDate.getMonth()); 
-          // (Optional: heavy on DOM, maybe skip for now)
         }
       }
     }
