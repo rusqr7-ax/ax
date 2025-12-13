@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Вход в AX</title>
-  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="css/main.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body { display: flex; align-items: center; justify-content: center; height: 100vh; padding: 0; }
@@ -27,7 +27,7 @@
   </div>
 
   <script type="module">
-    import { supabase } from '../js/supabaseClient.js';
+    import { supabase } from './js/supabaseClient.js';
 
     document.getElementById('btnLogin').onclick = async () => {
       const email = document.getElementById('email').value;
