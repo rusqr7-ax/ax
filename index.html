@@ -197,17 +197,69 @@
     .schedule-switch { margin-bottom: 20px; display: flex; gap: 10px; }
     .schedule-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .month-nav { display: flex; align-items: center; }
-    .sticky-col { position: sticky; left: 0; background: var(--bg-color); z-index: 1; border-right: 1px solid var(--border-color); }
     
-    .shift-select {
-      background: transparent; border: none; color: var(--text-main); 
-      width: 100%; min-width: 40px; cursor: pointer; appearance: none; -webkit-appearance: none; text-align: center;
+    .schedule-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      text-align: center;
+      border: 1px solid var(--border-color);
     }
-    .shift-select:hover { background: var(--hover-color); }
-    .shift-1 { color: #90caf9; font-weight: bold; } /* Пример цветов */
-    .shift-2 { color: #a5d6a7; font-weight: bold; }
-    .shift-none { color: #444; }
-    .saving { opacity: 0.5; }
+    .schedule-table th, .schedule-table td {
+      border: 1px solid #444; /* Более заметные границы как в Excel */
+      padding: 4px;
+      min-width: 30px;
+      vertical-align: middle;
+    }
+    .schedule-table th {
+      background: #222;
+      color: #fff;
+      font-weight: 600;
+    }
+    .schedule-table .sticky-col {
+      position: sticky; left: 0; background: var(--bg-color); z-index: 2;
+      text-align: left;
+      font-weight: 600;
+      min-width: 150px;
+      border-right: 2px solid var(--border-color);
+    }
+    .schedule-table .weekend {
+      background: rgba(255, 255, 255, 0.05);
+      color: #ff8a80;
+    }
+    
+    /* Shift Cells */
+    .cell-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: inherit;
+      text-align: center;
+      font-weight: bold;
+      cursor: pointer;
+      appearance: none;
+    }
+    .cell-input:focus { background: #333; outline: none; }
+    
+    .cell-b { background: #e3f2fd !important; color: #1565c0 !important; font-weight: 800; } /* Выходной - Синий */
+    .cell-work { color: var(--text-main); }
+    
+    /* Legend */
+    .legend-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 20px;
+      font-size: 12px;
+      border-top: 1px solid var(--border-color);
+      padding-top: 20px;
+    }
+    .legend-item { display: flex; gap: 10px; align-items: center; }
+    .legend-key { 
+      font-weight: bold; width: 24px; height: 24px; 
+      display: flex; align-items: center; justify-content: center; 
+      border: 1px solid var(--border-color); border-radius: 4px;
+    }
 
     /* --- CALENDAR CSS --- */
     .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 20px; }
@@ -275,6 +327,9 @@
           <div class="dropdown-menu" id="profileMenu">
             <button id="themeBtn" class="menu-item">
                <span>🌓</span> Сменить тему
+            </button>
+            <button id="changePhotoBtn" class="menu-item">
+               <span>📸</span> Сменить фото
             </button>
             <button id="changePassBtn" class="menu-item">
                <span>🔒</span> Сменить пароль
@@ -584,19 +639,35 @@
               <h2 style="text-transform: capitalize; margin: 0 15px;">${monthName}</h2>
               <button id="schedNext" class="btn btn-sm">→</button>
             </div>
-            <div class="actions">
-               <button class="btn btn-primary" onclick="alert('Функция копирования в разработке')">Копировать прошлый</button>
-            </div>
           </div>
           <div class="table-responsive">
             <table class="schedule-table" id="schedTable">
-              <thead><tr id="schedHeaderRow"><th>Сотрудник</th></tr></thead>
+              <thead id="schedHead"></thead>
               <tbody id="schedBody"></tbody>
+              <tfoot id="schedFoot"></tfoot>
             </table>
           </div>
+          <div id="schedLegend" class="legend-grid"></div>
         `;
         document.getElementById('schedPrev').onclick = () => this.changeMonth(-1);
         document.getElementById('schedNext').onclick = () => this.changeMonth(1);
+        this.renderLegend();
+      }
+      
+      renderLegend() {
+        const leg = document.getElementById('schedLegend');
+        leg.innerHTML = '';
+        this.shiftTypes.forEach(s => {
+           const div = document.createElement('div');
+           div.className = 'legend-item';
+           div.innerHTML = `<div class="legend-key">${s.id}</div> <span>${s.title}</span>`;
+           leg.appendChild(div);
+        });
+        // Добавим B - выходной
+        const divB = document.createElement('div');
+        divB.className = 'legend-item';
+        divB.innerHTML = `<div class="legend-key" style="background:#e3f2fd; color:#1565c0">B</div> <span>Выходной</span>`;
+        leg.appendChild(divB);
       }
 
       changeMonth(delta) {
@@ -615,80 +686,147 @@
       }
 
       renderTable(year, month) {
-        const headerRow = document.getElementById('schedHeaderRow');
+        const thead = document.getElementById('schedHead');
         const tbody = document.getElementById('schedBody');
+        const tfoot = document.getElementById('schedFoot');
         const daysInMonth = new Date(year, month + 1, 0).getDate();
-        while (headerRow.children.length > 1) headerRow.removeChild(headerRow.lastChild);
-
+        
+        // --- HEADER ---
+        let headerHtml = '<tr><th rowspan="2">№</th><th rowspan="2" class="sticky-col">Фамилия И. О.</th><th rowspan="2">Должность</th>';
+        // Days Row
         for (let d = 1; d <= daysInMonth; d++) {
-          const th = document.createElement('th');
-          const dateObj = new Date(year, month, d);
-          const dayName = dateObj.toLocaleDateString('ru-RU', { weekday: 'short' });
-          th.innerHTML = `${d}<br><small>${dayName}</small>`;
-          if (dayName === 'сб' || dayName === 'вс') th.classList.add('weekend');
-          headerRow.appendChild(th);
+           const dateObj = new Date(year, month, d);
+           const dayName = dateObj.toLocaleDateString('ru-RU', { weekday: 'short' });
+           const isWeekend = (dayName === 'сб' || dayName === 'вс') ? 'weekend' : '';
+           headerHtml += `<th class="${isWeekend}">${d}</th>`;
         }
-        const thTotal = document.createElement('th'); thTotal.textContent = 'Итого'; headerRow.appendChild(thTotal);
-        tbody.innerHTML = '';
-        if (this.employees.length === 0) { tbody.innerHTML = '<tr><td colspan="35">Нет сотрудников.</td></tr>'; return; }
+        headerHtml += '<th rowspan="2">Итого<br>часов</th><th rowspan="2">Вых</th></tr><tr>';
+        // Day Names Row
+        for (let d = 1; d <= daysInMonth; d++) {
+           const dateObj = new Date(year, month, d);
+           const dayName = dateObj.toLocaleDateString('ru-RU', { weekday: 'short' });
+           const isWeekend = (dayName === 'сб' || dayName === 'вс') ? 'weekend' : '';
+           headerHtml += `<th class="${isWeekend}" style="font-size:10px">${dayName}</th>`;
+        }
+        headerHtml += '</tr>';
+        thead.innerHTML = headerHtml;
 
-        this.employees.forEach(user => {
+        // --- BODY ---
+        tbody.innerHTML = '';
+        if (this.employees.length === 0) { tbody.innerHTML = '<tr><td colspan="40">Нет сотрудников.</td></tr>'; return; }
+        
+        // Arrays for totals per day
+        const dayCounts = new Array(daysInMonth + 1).fill(0);
+
+        this.employees.forEach((user, idx) => {
           const tr = document.createElement('tr');
-          const tdName = document.createElement('td');
-          tdName.className = 'sticky-col';
-          tdName.textContent = user.full_name || 'Без имени';
-          tr.appendChild(tdName);
+          
+          // Meta info
+          let roleName = user.role === 'director' ? 'Директор' : (user.role === 'senior_seller' ? 'Ст. продавец' : 'Продавец');
+          tr.innerHTML = `
+            <td>${idx + 1}</td>
+            <td class="sticky-col" style="text-align:left; padding-left:10px;">${user.full_name}</td>
+            <td>${roleName}</td>
+          `;
+
           let totalHours = 0;
+          let totalDaysOff = 0;
 
           for (let d = 1; d <= daysInMonth; d++) {
             const td = document.createElement('td');
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            
+            // Logic
             const record = this.scheduleData.find(s => s.user_id === user.id && s.date === dateStr);
-            const shiftId = record ? record.shift_id : '';
+            const shiftId = record ? record.shift_id : null; // null = B
+            
+            // Styling
+            if (shiftId) dayCounts[d]++; // Count workers for this day
+            else totalDaysOff++;
 
             const select = document.createElement('select');
-            select.className = `shift-select shift-${shiftId || 'none'}`;
+            select.className = `cell-input ${shiftId ? 'cell-work' : 'cell-b'}`;
             select.dataset.userId = user.id;
             select.dataset.date = dateStr;
             
-            const optDefault = document.createElement('option'); optDefault.value = ''; optDefault.text = ''; select.appendChild(optDefault);
+            // Options: B (null) + Shifts
+            const optB = document.createElement('option'); optB.value = ''; optB.text = 'B'; 
+            if (!shiftId) optB.selected = true;
+            select.appendChild(optB);
+            
             this.shiftTypes.forEach(st => {
               const opt = document.createElement('option');
-              opt.value = st.id; opt.textContent = st.id; opt.title = st.title;
+              opt.value = st.id; opt.textContent = st.id; 
               if (String(st.id) === String(shiftId)) opt.selected = true;
               select.appendChild(opt);
             });
-
+            
+            // Calculate Hours
             if (shiftId) {
-              const shiftInfo = this.shiftTypes.find(s => s.id === shiftId);
-              if (shiftInfo) totalHours += 9;
+                const shiftInfo = this.shiftTypes.find(s => s.id === shiftId);
+                if (shiftInfo) {
+                   // Simple parser for hours from "10:00 - 19:00"
+                   // Or just use pre-calculated duration. For now, approx based on ID logic or just hardcode for demo
+                   // Better: Parse start/end from DB shift object
+                   const startH = parseInt(shiftInfo.start_time.split(':')[0]);
+                   const endH = parseInt(shiftInfo.end_time.split(':')[0]);
+                   let duration = endH - startH;
+                   if (duration < 0) duration += 24; // overnight
+                   totalHours += (duration - 1); // Minus 1 hour break approx
+                }
             }
+
             select.onchange = (e) => this.handleShiftChange(e.target);
             td.appendChild(select);
             tr.appendChild(td);
           }
-          const tdTotal = document.createElement('td'); tdTotal.innerHTML = `<b>${totalHours}</b>`; tr.appendChild(tdTotal);
+          
+          tr.innerHTML += `<td><b>${totalHours}</b></td><td>${totalDaysOff}</td>`;
           tbody.appendChild(tr);
         });
+
+        // --- FOOTER (Totals) ---
+        let footHtml = '<tr><td colspan="3" style="text-align:right; font-weight:bold; padding-right:10px;">Итого смен:</td>';
+        for (let d = 1; d <= daysInMonth; d++) {
+            footHtml += `<td><b>${dayCounts[d]}</b></td>`;
+        }
+        footHtml += '<td>-</td><td>-</td></tr>';
+        tfoot.innerHTML = footHtml;
       }
 
       async handleShiftChange(select) {
         const userId = select.dataset.userId;
         const date = select.dataset.date;
-        const shiftId = select.value ? parseInt(select.value) : null;
+        const val = select.value; 
+        const shiftId = val ? parseInt(val) : null;
         const monthStr = date.slice(0, 7);
-        select.className = `shift-select shift-${shiftId || 'none'} saving`;
+        
+        // Optimistic UI update
+        select.className = `cell-input ${shiftId ? 'cell-work' : 'cell-b'} saving`;
 
         const { error } = await supabase.from('schedule').upsert({
           user_id: userId, date: date, month: monthStr, shift_id: shiftId, is_day_off: !shiftId
         }, { onConflict: 'user_id, date' });
 
-        if (error) { alert('Ошибка сохранения!'); select.classList.add('error'); }
+        if (error) { alert('Ошибка!'); select.classList.add('error'); }
         else {
           select.classList.remove('saving');
+          // Update cache
           const idx = this.scheduleData.findIndex(s => s.user_id === userId && s.date === date);
-          if (idx >= 0) this.scheduleData[idx].shift_id = shiftId;
-          else this.scheduleData.push({ user_id: userId, date, month: monthStr, shift_id: shiftId });
+          if (idx >= 0) {
+             if (shiftId === null) {
+                 // Remove or update to null
+                 this.scheduleData[idx].shift_id = null;
+             } else {
+                 this.scheduleData[idx].shift_id = shiftId;
+             }
+          } else {
+            this.scheduleData.push({ user_id: userId, date, month: monthStr, shift_id: shiftId });
+          }
+          // Re-render to update totals? Or just leave it until refresh
+          // For simplicity, let's re-render table to update totals row
+          // this.renderTable(this.currentDate.getFullYear(), this.currentDate.getMonth()); 
+          // (Optional: heavy on DOM, maybe skip for now)
         }
       }
     }
@@ -785,6 +923,46 @@
         e.stopPropagation();
         document.body.classList.toggle('light-theme');
         localStorage.setItem('ax_theme', document.body.classList.contains('light-theme') ? 'light' : 'dark');
+      };
+
+      // Change Photo
+      const avatarInput = document.getElementById('avatarUploadInput');
+      document.getElementById('changePhotoBtn').onclick = (e) => {
+        e.stopPropagation();
+        avatarInput.click();
+        pMenu.style.display = 'none';
+      };
+
+      avatarInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        try {
+          // 1. Upload
+          const btn = document.getElementById('changePhotoBtn');
+          const originalText = btn.innerHTML;
+          btn.textContent = 'Загрузка...';
+          
+          const url = await uploadFile('photos', file);
+          
+          // 2. Update DB
+          const { error } = await supabase.from('employees').update({ photo_url: url }).eq('id', currentUser.id);
+          
+          if (error) throw error;
+
+          // 3. Update Local State & UI
+          currentUser.photo_url = url;
+          localStorage.setItem('ax_user', JSON.stringify(currentUser));
+          document.getElementById('headerAvatar').src = url;
+          
+          alert('Фото обновлено!');
+        } catch (err) {
+          alert('Ошибка: ' + err.message);
+        } finally {
+          e.target.value = '';
+          // Restore button text if menu was still open (though we closed it)
+          document.getElementById('changePhotoBtn').innerHTML = '<span>📸</span> Сменить фото';
+        }
       };
 
       // Change Password
