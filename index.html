@@ -1369,6 +1369,7 @@
         // Modules
         window.calendarApp = new Calendar('calendar-wrapper');
         window.scheduleApp = new ScheduleManager('schedule-manager');
+        await window.scheduleApp.init();
         
         // Tabs
         const tabs = document.querySelectorAll('.tab');
@@ -1386,12 +1387,6 @@
                }
             };
         });
-
-      } catch (e) {
-        console.error('Init App Error:', e);
-        alert('Ошибка инициализации приложения. Попробуйте обновить страницу.');
-      }
-    }
 
         // Profile Menu Events
         const pBtn = document.getElementById('profileBtn');
@@ -1486,10 +1481,6 @@
           loadUsersTable();
         }
 
-        const scheduleManager = new ScheduleManager('schedule-manager');
-        await scheduleManager.init();
-
-        new Calendar('calendar-wrapper');
         loadContent();
         
         const btnMy = document.getElementById('viewMySched');
