@@ -39,7 +39,7 @@ class Calendar {
 
   renderStructure() {
     this.container.innerHTML = `
-      <div class="card calendar-card" style="background:transparent; border:none; padding:0;">
+      <div class="card calendar-card">
         <div class="cal-header">
           <div class="cal-title" id="calTitle"></div>
           <div class="cal-nav">
