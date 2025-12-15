@@ -431,15 +431,12 @@
                <span class="profile-name" id="headerLogin">...</span> 
                <span class="profile-role" id="headerRole">...</span>
             </div>
-            <img src="https://ui-avatars.com/api/?name=User&background=333&color=fff" class="profile-avatar" id="headerAvatar" alt="Foto">
+            <div class="profile-avatar profile-avatar-text" id="headerAvatar" aria-label="Avatar"></div>
           </button>
           
           <div class="dropdown-menu" id="profileMenu">
             <button id="themeBtn" class="menu-item">
                <span>🌓</span> Сменить тему
-            </button>
-            <button id="changePhotoBtn" class="menu-item">
-               <span>📸</span> Сменить фото
             </button>
             <button id="changePassBtn" class="menu-item">
                <span>🔒</span> Сменить пароль
@@ -609,6 +606,18 @@
       const { data } = await supabase.from('employees').select('*').order('full_name');
       globalEmployees = data || [];
       return globalEmployees;
+    }
+
+    function sortEmployees(list) {
+      const rank = { director: 0, senior_seller: 1, seller: 2 };
+      return [...(list || [])].sort((a, b) => {
+        const ra = rank[a.role] ?? 99;
+        const rb = rank[b.role] ?? 99;
+        if (ra !== rb) return ra - rb;
+        const an = a.full_name || a.login || '';
+        const bn = b.full_name || b.login || '';
+        return an.localeCompare(bn, 'ru', { sensitivity: 'base' });
+      });
     }
 
     async function createEmployee(data) {
@@ -820,13 +829,15 @@
         this.employees = [];
         this.shiftTypes = [];
         this.scheduleData = [];
+        this.editMode = false;
+        this.roleFilter = 'all';
       }
 
       async init() {
         this.container.innerHTML = '<div class="loader">Загрузка...</div>';
         
         // Use global cached data
-        this.employees = await getAllEmployees();
+        this.employees = sortEmployees(await getAllEmployees());
         this.shiftTypes = await getShiftTypes();
         
         this.renderControls();
@@ -845,6 +856,15 @@
               <h2 style="text-transform: capitalize; margin: 0 15px;">${monthName}</h2>
               <button id="schedNext" class="btn btn-sm">→</button>
             </div>
+            <div class="schedule-tools" style="display:flex;gap:10px;align-items:center;">
+              <select id="roleFilter" class="input-field" style="max-width:220px">
+                <option value="all">Все должности</option>
+                <option value="director">Директор</option>
+                <option value="senior_seller">Старший продавец</option>
+                <option value="seller">Продавец</option>
+              </select>
+              ${currentUser && currentUser.role === 'director' ? '<button id="toggleEditMode" class="btn btn-sm">Режим изменения: выкл</button>' : ''}
+            </div>
           </div>
           <div class="table-responsive">
             <table class="schedule-table" id="schedTable">
@@ -857,6 +877,10 @@
         `;
         document.getElementById('schedPrev').onclick = () => this.changeMonth(-1);
         document.getElementById('schedNext').onclick = () => this.changeMonth(1);
+        const roleSel = document.getElementById('roleFilter');
+        if (roleSel) { roleSel.value = this.roleFilter; roleSel.onchange = () => { this.roleFilter = roleSel.value; this.renderTable(y, m); }; }
+        const editBtn = document.getElementById('toggleEditMode');
+        if (editBtn) { editBtn.onclick = () => { this.editMode = !this.editMode; editBtn.textContent = `Режим изменения: ${this.editMode ? 'вкл' : 'выкл'}`; this.renderTable(y, m); }; }
         this.renderLegend();
       }
       
@@ -952,6 +976,8 @@
         const tfoot = document.getElementById('schedFoot');
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
+        let list = (this.roleFilter === 'all') ? this.employees : this.employees.filter(u => u.role === this.roleFilter);
+        list = sortEmployees(list);
         
         // --- HEADER ---
         // Always render header to ensure dates are correct for the month
@@ -978,12 +1004,12 @@
         // 1. Employee list changed length
         // 2. Month changed (different days count)
         // 3. Table is empty
-        const shouldRebuild = tbody.children.length !== this.employees.length || 
+        const shouldRebuild = tbody.children.length !== list.length || 
                               tbody.dataset.month !== monthStr;
         
         tbody.dataset.month = monthStr; // Update marker
 
-        if (this.employees.length === 0) { tbody.innerHTML = '<tr><td colspan="40">Нет сотрудников.</td></tr>'; return; }
+        if (list.length === 0) { tbody.innerHTML = '<tr><td colspan="40">Нет сотрудников.</td></tr>'; return; }
         
         if (shouldRebuild) {
              tbody.innerHTML = ''; // Clear for full rebuild
@@ -992,7 +1018,7 @@
         // Arrays for totals per day
         const dayCounts = new Array(daysInMonth + 1).fill(0);
 
-        this.employees.forEach((user, idx) => {
+        list.forEach((user, idx) => {
           let tr;
           if (shouldRebuild) {
               tr = document.createElement('tr');
@@ -1059,7 +1085,7 @@
             if (!td) continue;
 
             // Check permissions
-            const canEdit = ['director', 'senior_seller'].includes(currentUser.role);
+            const canEdit = (currentUser.role === 'director') && this.editMode;
 
             if (canEdit) {
                 // Check if select exists
@@ -1101,7 +1127,7 @@
                             groupShifts.sort((a,b) => a.id - b.id).forEach(st => {
                                 const opt = document.createElement('option');
                                 opt.value = st.id;
-                                opt.textContent = `${st.id} | ${st.start_time.slice(0,5)}-${st.end_time.slice(0,5)}`;
+                                opt.textContent = `${st.id}`;
                                 optgroup.appendChild(opt);
                             });
                             select.appendChild(optgroup);
@@ -1117,7 +1143,7 @@
                         others.sort((a,b) => a.id - b.id).forEach(st => {
                              const opt = document.createElement('option');
                              opt.value = st.id;
-                             opt.textContent = `${st.id} | ${st.start_time.slice(0,5)}-${st.end_time.slice(0,5)}`;
+                             opt.textContent = `${st.id}`;
                              optgroup.appendChild(opt);
                         });
                         select.appendChild(optgroup);
@@ -1409,9 +1435,12 @@
            document.getElementById('headerLogin').textContent = currentUser.full_name || currentUser.login;
            const roles = { 'director': 'Директор', 'senior_seller': 'Старший продавец', 'seller': 'Продавец' };
            document.getElementById('headerRole').textContent = roles[currentUser.role] || currentUser.role;
-           
-           const avatarUrl = currentUser.photo_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.full_name || 'User')}&background=333&color=fff`;
-           document.getElementById('headerAvatar').src = avatarUrl;
+           const avatarEl = document.getElementById('headerAvatar');
+           if (avatarEl) {
+             const name = (currentUser.full_name || currentUser.login || 'User').trim();
+             const initials = name.split(/\s+/).map(w => w[0]).slice(0,2).join('').toUpperCase();
+             avatarEl.textContent = initials;
+           }
         }
 
         // Theme
@@ -1461,38 +1490,7 @@
           localStorage.setItem('ax_theme', document.body.classList.contains('light-theme') ? 'light' : 'dark');
         };
 
-        // Change Photo
-        const avatarInput = document.getElementById('avatarUploadInput');
-        if (avatarInput) {
-          const changePhotoBtn = document.getElementById('changePhotoBtn');
-          if (changePhotoBtn) {
-             changePhotoBtn.onclick = (e) => {
-               e.stopPropagation();
-               avatarInput.click();
-               pMenu.style.display = 'none';
-             };
-          }
-
-          avatarInput.onchange = async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            try {
-              if (changePhotoBtn) changePhotoBtn.textContent = 'Загрузка...';
-              const url = await uploadFile('photos', file);
-              const { error } = await supabase.from('employees').update({ photo_url: url }).eq('id', currentUser.id);
-              if (error) throw error;
-              currentUser.photo_url = url;
-              localStorage.setItem('ax_user', JSON.stringify(currentUser));
-              document.getElementById('headerAvatar').src = url;
-              alert('Фото обновлено!');
-            } catch (err) {
-              alert('Ошибка: ' + err.message);
-            } finally {
-              e.target.value = '';
-              if (changePhotoBtn) changePhotoBtn.innerHTML = '<span>📸</span> Сменить фото';
-            }
-          };
-        }
+        // Смена фото отключена
 
         // Change Password
         document.getElementById('changePassBtn').onclick = (e) => {
