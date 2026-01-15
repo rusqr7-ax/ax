@@ -520,9 +520,7 @@
         </div>
         <button class="btn btn-primary" id="btnAddMerch" style="margin-top:10px;">Добавить</button>
       </div>
-      <div class="merch-grid" id="merchGrid">
-        <!-- Merch items here -->
-      </div>
+      <div class="merch-grid" id="merchGrid"></div>
     </div>
 
     <!-- TAB: MANUALS -->
@@ -535,9 +533,7 @@
         </div>
         <button class="btn btn-primary" id="btnAddManual" style="margin-top:10px;">Добавить</button>
       </div>
-      <div class="manual-list" id="manualList">
-        <!-- Manual items here -->
-      </div>
+      <div class="manual-list" id="manualList"></div>
     </div>
 
     <!-- TAB: ADMIN -->
@@ -581,18 +577,16 @@
       let currentUser = null;
       let globalEmployees = [];
       let globalShiftTypes = [];
+      let dataCache = { merch: null, manuals: null, schedule: {} };
 
       try {
         if (window.supabase && typeof window.supabase.createClient === 'function') {
           supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         }
-      } catch (e) {
-        console.error('Supabase init failed:', e);
-      }
+      } catch (e) { console.error('Supabase init failed:', e); }
       
       window.appSupabase = supabase;
 
-    // === INITIALIZATION ===
     async function initDB() {
       if (!supabase) return;
       const shifts = [
@@ -624,13 +618,7 @@
 
     async function loginUser(login, password) {
       if (!supabase) throw new Error('Нет соединения с сервером');
-      const { data, error } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('login', login)
-        .eq('password', password)
-        .single();
-
+      const { data, error } = await supabase.from('employees').select('*').eq('login', login).eq('password', password).single();
       if (error || !data) throw new Error('Неверный логин или пароль');
       localStorage.setItem('ax_user', JSON.stringify(data));
       return data;
@@ -641,35 +629,22 @@
       return userStr ? JSON.parse(userStr) : null;
     }
 
-    function logoutUser() {
-      localStorage.removeItem('ax_user');
-      location.reload();
-    }
-
-    window.closeModal = function(id) {
-      const m = document.getElementById(id);
-      if (m) m.style.display = 'none';
-    }
+    function logoutUser() { localStorage.removeItem('ax_user'); location.reload(); }
+    window.closeModal = function(id) { const m = document.getElementById(id); if (m) m.style.display = 'none'; }
 
     function computeInitials(nameOrLogin) {
       const raw = String(nameOrLogin || '').trim();
       if (!raw) return 'UU';
       const parts = raw.split(/[\s-]+/).filter(Boolean);
-      if (parts.length >= 2) {
-        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-      }
-      return raw.slice(0, 2).toUpperCase();
+      return parts.length >= 2 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : raw.slice(0, 2).toUpperCase();
     }
 
     function sortEmployees(list) {
       const rank = { director: 0, senior_seller: 1, seller: 2 };
       return [...(list || [])].sort((a, b) => {
-        const ra = rank[a.role] ?? 99;
-        const rb = rank[b.role] ?? 99;
+        const ra = rank[a.role] ?? 99, rb = rank[b.role] ?? 99;
         if (ra !== rb) return ra - rb;
-        const an = a.full_name || a.login || '';
-        const bn = b.full_name || b.login || '';
-        return an.localeCompare(bn, 'ru', { sensitivity: 'base' });
+        return (a.full_name || a.login || '').localeCompare(b.full_name || b.login || '', 'ru');
       });
     }
 
@@ -681,103 +656,51 @@
         this.shifts = new Map();
         this.init();
       }
-
-      async init() {
-        this.renderStructure();
-        this.attachEvents();
-        await this.loadMyShifts();
-      }
-
+      async init() { this.renderStructure(); this.attachEvents(); await this.loadMyShifts(); }
       async loadMyShifts() {
         if (!supabase || !currentUser) return;
-        const y = this.cursor.getFullYear();
-        const m = this.cursor.getMonth() + 1;
+        const y = this.cursor.getFullYear(), m = this.cursor.getMonth() + 1;
         const monthStr = `${y}-${String(m).padStart(2, '0')}`;
-
-        const { data } = await supabase
-          .from('schedule')
-          .select('date, shift_id')
-          .eq('user_id', currentUser.id)
-          .eq('month', monthStr);
-
+        const { data } = await supabase.from('schedule').select('date, shift_id').eq('user_id', currentUser.id).eq('month', monthStr);
         this.shifts.clear();
-        if (data) {
-          data.forEach(item => {
-            if (item.shift_id) {
-              const s = globalShiftTypes.find(x => String(x.id) === String(item.shift_id));
-              if (s) this.shifts.set(item.date, s);
-            }
-          });
-        }
+        if (data) data.forEach(item => {
+          if (item.shift_id) {
+            const s = globalShiftTypes.find(x => String(x.id) === String(item.shift_id));
+            if (s) this.shifts.set(item.date, s);
+          }
+        });
         this.render();
       }
-
       renderStructure() {
-        this.container.innerHTML = `
-          <div class="card calendar-card" style="background:transparent; border:none; padding:0;">
-            <div class="cal-header">
-              <div class="cal-title" id="calTitle"></div>
-              <div class="cal-nav">
-                <button class="cal-btn" id="calPrev">←</button>
-                <button class="cal-btn" id="calToday">Сегодня</button>
-                <button class="cal-btn" id="calNext">→</button>
-              </div>
-            </div>
-            <div class="cal-grid" id="calDow"></div>
-            <div class="cal-grid" id="calGrid"></div>
-          </div>
-        `;
-        const dowRow = document.getElementById('calDow');
+        this.container.innerHTML = `<div class="card calendar-card" style="background:transparent; border:none; padding:0;">
+          <div class="cal-header"><div class="cal-title" id="calTitle"></div><div class="cal-nav">
+            <button class="cal-btn" id="calPrev">←</button><button class="cal-btn" id="calToday">Сегодня</button><button class="cal-btn" id="calNext">→</button>
+          </div></div><div class="cal-grid" id="calDow"></div><div class="cal-grid" id="calGrid"></div></div>`;
         ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].forEach(d => {
-          const el = document.createElement('div');
-          el.className = 'cal-dow';
-          el.textContent = d;
-          dowRow.appendChild(el);
+          const el = document.createElement('div'); el.className = 'cal-dow'; el.textContent = d; document.getElementById('calDow').appendChild(el);
         });
       }
-
       attachEvents() {
         document.getElementById('calPrev').onclick = () => { this.cursor.setMonth(this.cursor.getMonth() - 1); this.loadMyShifts(); };
         document.getElementById('calNext').onclick = () => { this.cursor.setMonth(this.cursor.getMonth() + 1); this.loadMyShifts(); };
         document.getElementById('calToday').onclick = () => { this.cursor = new Date(); this.loadMyShifts(); };
       }
-
       render() {
-        const grid = document.getElementById('calGrid');
-        const title = document.getElementById('calTitle');
+        const grid = document.getElementById('calGrid'), title = document.getElementById('calTitle');
         grid.innerHTML = '';
-        const y = this.cursor.getFullYear();
-        const m = this.cursor.getMonth();
+        const y = this.cursor.getFullYear(), m = this.cursor.getMonth();
         title.textContent = new Date(y, m, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-        
-        const firstDay = new Date(y, m, 1);
-        let startOffset = firstDay.getDay() || 7;
-        startOffset -= 1;
-
-        for(let i=0; i<startOffset; i++) {
-          const el = document.createElement('div'); el.className = 'cal-day other'; grid.appendChild(el);
-        }
-
-        const daysInMonth = new Date(y, m+1, 0).getDate();
-        const todayStr = new Date().toISOString().slice(0, 10);
-
+        let startOffset = (new Date(y, m, 1).getDay() || 7) - 1;
+        for(let i=0; i<startOffset; i++) { const el = document.createElement('div'); el.className = 'cal-day other'; grid.appendChild(el); }
+        const daysInMonth = new Date(y, m+1, 0).getDate(), todayStr = new Date().toISOString().slice(0, 10);
         for(let d=1; d<=daysInMonth; d++) {
           const dateObj = new Date(y, m, d);
           const dateKey = new Date(dateObj.getTime() - (dateObj.getTimezoneOffset() * 60000)).toISOString().slice(0, 10);
-          
-          const cell = document.createElement('div');
-          cell.className = 'cal-day';
-          if (dateKey === todayStr) cell.classList.add('today');
-
-          const num = document.createElement('div'); num.className = 'daynum'; num.textContent = d;
-          cell.appendChild(num);
-
+          const cell = document.createElement('div'); cell.className = 'cal-day'; if (dateKey === todayStr) cell.classList.add('today');
+          cell.innerHTML = `<div class="daynum">${d}</div>`;
           if (this.shifts.has(dateKey)) {
             const shift = this.shifts.get(dateKey);
-            const marker = document.createElement('div');
-            marker.className = 'shift-marker';
-            marker.textContent = `${shift.start_time.slice(0,5)} - ${shift.end_time.slice(0,5)}`;
-            cell.appendChild(marker);
+            cell.innerHTML += `<div class="shift-marker">${shift.start_time.slice(0,5)} - ${shift.end_time.slice(0,5)}</div>`;
           }
           grid.appendChild(cell);
         }
@@ -795,138 +718,69 @@
         this.editMode = false;
         this.roleFilter = 'all';
       }
-
       async init() {
-        this.container.innerHTML = '<div class="loader">Загрузка...</div>';
         this.employees = sortEmployees(globalEmployees);
         this.shiftTypes = globalShiftTypes;
         this.renderControls();
         await this.loadMonthData();
       }
-
       renderControls() {
-        const y = this.currentDate.getFullYear();
-        const m = this.currentDate.getMonth();
+        const y = this.currentDate.getFullYear(), m = this.currentDate.getMonth();
         const monthName = new Date(y, m, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-
-        this.container.innerHTML = `
-          <div class="schedule-controls">
-            <div class="month-nav">
-              <button id="schedPrev" class="btn btn-sm">←</button>
-              <h2 style="text-transform: capitalize; margin: 0 15px;">${monthName}</h2>
-              <button id="schedNext" class="btn btn-sm">→</button>
-            </div>
-            <div class="schedule-tools" style="display:flex;gap:10px;align-items:center;">
-              <select id="roleFilter" class="input-field" style="max-width:220px">
-                <option value="all">Все должности</option>
-                <option value="director">Директор</option>
-                <option value="senior_seller">Старший продавец</option>
-                <option value="seller">Продавец</option>
-              </select>
-              ${currentUser && currentUser.role === 'director' ? '<button id="toggleEditMode" class="btn btn-sm">Режим изменения: выкл</button>' : ''}
-            </div>
-          </div>
-          <div class="table-responsive">
-            <table class="schedule-table" id="schedTable">
-              <thead id="schedHead"></thead>
-              <tbody id="schedBody"></tbody>
-              <tfoot id="schedFoot"></tfoot>
-            </table>
-          </div>
-          <div id="schedLegend" class="legend-grid"></div>
-        `;
-        
+        this.container.innerHTML = `<div class="schedule-controls"><div class="month-nav">
+          <button id="schedPrev" class="btn btn-sm">←</button><h2 style="text-transform: capitalize; margin: 0 15px;">${monthName}</h2><button id="schedNext" class="btn btn-sm">→</button>
+          </div><div class="schedule-tools" style="display:flex;gap:10px;align-items:center;">
+          <select id="roleFilter" class="input-field" style="max-width:220px"><option value="all">Все должности</option><option value="director">Директор</option><option value="senior_seller">Старший продавец</option><option value="seller">Продавец</option></select>
+          ${currentUser && currentUser.role === 'director' ? '<button id="toggleEditMode" class="btn btn-sm">Режим изменения: выкл</button>' : ''}
+          </div></div><div class="table-responsive"><table class="schedule-table" id="schedTable"><thead id="schedHead"></thead><tbody id="schedBody"></tbody><tfoot id="schedFoot"></tfoot></table></div><div id="schedLegend" class="legend-grid"></div>`;
         document.getElementById('schedPrev').onclick = () => this.changeMonth(-1);
         document.getElementById('schedNext').onclick = () => this.changeMonth(1);
-        
         const roleSel = document.getElementById('roleFilter');
-        if (roleSel) { 
-          roleSel.value = this.roleFilter; 
-          roleSel.onchange = () => { 
-            this.roleFilter = roleSel.value; 
-            this.renderTable(y, m); 
-          }; 
-        }
-        
+        if (roleSel) { roleSel.value = this.roleFilter; roleSel.onchange = () => { this.roleFilter = roleSel.value; this.renderTable(y, m); }; }
         const editBtn = document.getElementById('toggleEditMode');
-        if (editBtn) { 
-          editBtn.onclick = () => { 
-            this.editMode = !this.editMode; 
-            editBtn.textContent = `Режим изменения: ${this.editMode ? 'вкл' : 'выкл'}`; 
-            this.renderTable(y, m); 
-          }; 
-        }
+        if (editBtn) { editBtn.onclick = () => { this.editMode = !this.editMode; editBtn.textContent = `Режим изменения: ${this.editMode ? 'вкл' : 'выкл'}`; this.renderTable(y, m); }; }
         this.renderLegend();
       }
-      
       renderLegend() {
-        const leg = document.getElementById('schedLegend');
-        leg.innerHTML = '';
-        const groups = [
-          { title: 'Директор (1.0)', ids: [1, 2], color: '#ffeb3b' },
-          { title: 'Продавцы (0.75)', ids: [3, 4, 5, 6, 7], color: '#4caf50' },
-          { title: 'Продавцы (0.5)', ids: [8, 9, 10, 11, 12], color: '#2196f3' }
-        ];
+        const leg = document.getElementById('schedLegend'); leg.innerHTML = '';
+        const groups = [{ title: 'Директор (1.0)', ids: [1, 2], color: '#ffeb3b' }, { title: 'Продавцы (0.75)', ids: [3, 4, 5, 6, 7], color: '#4caf50' }, { title: 'Продавцы (0.5)', ids: [8, 9, 10, 11, 12], color: '#2196f3' }];
         groups.forEach(group => {
-          const header = document.createElement('div');
-          header.style.gridColumn = '1 / -1';
-          header.style.marginTop = '15px';
-          header.style.fontWeight = 'bold';
-          header.textContent = group.title;
-          leg.appendChild(header);
+          const header = document.createElement('div'); header.style.gridColumn = '1 / -1'; header.style.marginTop = '15px'; header.style.fontWeight = 'bold'; header.textContent = group.title; leg.appendChild(header);
           this.shiftTypes.filter(s => group.ids.includes(s.id)).forEach(s => {
-            const div = document.createElement('div');
-            div.className = 'legend-item';
-            div.innerHTML = `<div class="legend-key" style="border-color:${group.color}; color:${group.color}">${s.id}</div> 
-                            <span>${s.start_time.slice(0,5)} - ${s.end_time.slice(0,5)}</span>`;
-            leg.appendChild(div);
+            const div = document.createElement('div'); div.className = 'legend-item'; div.innerHTML = `<div class="legend-key" style="border-color:${group.color}; color:${group.color}">${s.id}</div><span>${s.start_time.slice(0,5)} - ${s.end_time.slice(0,5)}</span>`; leg.appendChild(div);
           });
         });
       }
-
-      changeMonth(delta) {
-        this.currentDate.setMonth(this.currentDate.getMonth() + delta);
-        this.renderControls();
-        this.loadMonthData();
-      }
-
+      changeMonth(delta) { this.currentDate.setMonth(this.currentDate.getMonth() + delta); this.renderControls(); this.loadMonthData(); }
       async loadMonthData() {
-        const y = this.currentDate.getFullYear();
-        const m = this.currentDate.getMonth() + 1;
+        const y = this.currentDate.getFullYear(), m = this.currentDate.getMonth() + 1;
         const monthStr = `${y}-${String(m).padStart(2, '0')}`;
-        const { data } = await supabase.from('schedule').select('*').eq('month', monthStr);
-        this.scheduleData = data || [];
+        if (dataCache.schedule[monthStr]) { this.scheduleData = dataCache.schedule[monthStr]; }
+        else {
+          const { data } = await supabase.from('schedule').select('*').eq('month', monthStr);
+          this.scheduleData = data || []; dataCache.schedule[monthStr] = this.scheduleData;
+        }
         this.renderTable(y, m - 1);
       }
-
       renderTable(year, month) {
-        const thead = document.getElementById('schedHead');
-        const tbody = document.getElementById('schedBody');
-        const tfoot = document.getElementById('schedFoot');
+        const thead = document.getElementById('schedHead'), tbody = document.getElementById('schedBody'), tfoot = document.getElementById('schedFoot');
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         let list = (this.roleFilter === 'all') ? this.employees : this.employees.filter(u => u.role === this.roleFilter);
         list = sortEmployees(list);
-        
         let headerHtml = '<tr><th rowspan="2">№</th><th rowspan="2" class="sticky-col">Фамилия И. О.</th><th rowspan="2">Должность</th>';
         for (let d = 1; d <= daysInMonth; d++) {
-          const dateObj = new Date(year, month, d);
-          const dayName = dateObj.toLocaleDateString('ru-RU', { weekday: 'short' });
+          const dayName = new Date(year, month, d).toLocaleDateString('ru-RU', { weekday: 'short' });
           headerHtml += `<th class="${(dayName === 'сб' || dayName === 'вс') ? 'weekend' : ''}">${d}</th>`;
         }
         headerHtml += '<th rowspan="2">Часы</th><th rowspan="2">Вых</th></tr><tr>';
         for (let d = 1; d <= daysInMonth; d++) {
-          const dateObj = new Date(year, month, d);
-          const dayName = dateObj.toLocaleDateString('ru-RU', { weekday: 'short' });
+          const dayName = new Date(year, month, d).toLocaleDateString('ru-RU', { weekday: 'short' });
           headerHtml += `<th class="${(dayName === 'сб' || dayName === 'вс') ? 'weekend' : ''}" style="font-size:10px">${dayName}</th>`;
         }
-        headerHtml += '</tr>';
-        thead.innerHTML = headerHtml;
-
-        const dayCounts = new Array(daysInMonth + 1).fill(0);
-        tbody.innerHTML = '';
+        headerHtml += '</tr>'; thead.innerHTML = headerHtml;
+        const dayCounts = new Array(daysInMonth + 1).fill(0); tbody.innerHTML = '';
         list.forEach((user, idx) => {
-          const tr = document.createElement('tr');
-          let totalHours = 0, totalDaysOff = 0;
+          const tr = document.createElement('tr'); let totalHours = 0, totalDaysOff = 0;
           let roleName = user.role === 'director' ? 'Директор' : (user.role === 'senior_seller' ? 'Ст. продавец' : 'Продавец');
           let html = `<td>${idx + 1}</td><td class="sticky-col">${user.full_name}</td><td>${roleName}</td>`;
           for (let d = 1; d <= daysInMonth; d++) {
@@ -934,184 +788,94 @@
             const record = this.scheduleData.find(s => s.user_id === user.id && s.date === dateStr);
             const shiftId = record ? record.shift_id : null;
             if (shiftId) {
-              dayCounts[d]++;
-              const sInfo = this.shiftTypes.find(s => s.id === shiftId);
+              dayCounts[d]++; const sInfo = this.shiftTypes.find(s => s.id === shiftId);
               if (sInfo) totalHours += parseFloat(sInfo.work_hours);
             } else totalDaysOff++;
-
             if (currentUser.role === 'director' && this.editMode) {
               html += `<td><select class="cell-input ${shiftId ? 'cell-work' : 'cell-b'}" data-user-id="${user.id}" data-date="${dateStr}" onchange="window.handleShiftChange(this)">
-                        <option value="">B</option>
-                        ${this.shiftTypes.map(st => `<option value="${st.id}" ${shiftId === st.id ? 'selected' : ''}>${st.id}</option>`).join('')}
-                      </select></td>`;
-            } else {
-              html += `<td><div class="cell-input ${shiftId ? 'cell-work' : 'cell-b'}">${shiftId || 'B'}</div></td>`;
-            }
+                        <option value="">B</option>${this.shiftTypes.map(st => `<option value="${st.id}" ${shiftId === st.id ? 'selected' : ''}>${st.id}</option>`).join('')}</select></td>`;
+            } else html += `<td><div class="cell-input ${shiftId ? 'cell-work' : 'cell-b'}">${shiftId || 'B'}</div></td>`;
           }
-          html += `<td><b>${totalHours}</b></td><td>${totalDaysOff}</td>`;
-          tr.innerHTML = html;
-          tbody.appendChild(tr);
+          html += `<td><b>${totalHours}</b></td><td>${totalDaysOff}</td>`; tr.innerHTML = html; tbody.appendChild(tr);
         });
-
         let footHtml = '<tr><td colspan="3" style="text-align:right; font-weight:bold;">Итого смен:</td>';
         for (let d = 1; d <= daysInMonth; d++) footHtml += `<td><b>${dayCounts[d]}</b></td>`;
-        footHtml += '<td>-</td><td>-</td></tr>';
-        tfoot.innerHTML = footHtml;
+        footHtml += '<td>-</td><td>-</td></tr>'; tfoot.innerHTML = footHtml;
       }
     }
 
     window.handleShiftChange = async function(select) {
-      const { userId, date } = select.dataset;
-      const shiftId = select.value ? parseInt(select.value) : null;
-      const { error } = await supabase.from('schedule').upsert({
-        user_id: userId, date: date, month: date.slice(0, 7), shift_id: shiftId, is_day_off: !shiftId
-      }, { onConflict: 'user_id, date' });
+      const { userId, date } = select.dataset; const shiftId = select.value ? parseInt(select.value) : null;
+      const { error } = await supabase.from('schedule').upsert({ user_id: userId, date: date, month: date.slice(0, 7), shift_id: shiftId, is_day_off: !shiftId }, { onConflict: 'user_id, date' });
       if (error) alert(error.message);
       else {
         select.className = `cell-input ${shiftId ? 'cell-work' : 'cell-b'}`;
         if (window.scheduleApp) {
+          const monthStr = date.slice(0, 7);
           const idx = window.scheduleApp.scheduleData.findIndex(s => s.user_id === userId && s.date === date);
           if (idx >= 0) window.scheduleApp.scheduleData[idx].shift_id = shiftId;
           else window.scheduleApp.scheduleData.push({ user_id: userId, date, shift_id: shiftId });
+          dataCache.schedule[monthStr] = window.scheduleApp.scheduleData;
+          window.scheduleApp.renderTable(window.scheduleApp.currentDate.getFullYear(), window.scheduleApp.currentDate.getMonth());
         }
       }
     };
 
-    // === MERCH & MANUALS ===
     async function loadMerch() {
-      const grid = document.getElementById('merchGrid');
+      const grid = document.getElementById('merchGrid'); if (dataCache.merch) { renderMerch(dataCache.merch); return; }
       grid.innerHTML = '<div class="loader">Загрузка...</div>';
       const { data } = await supabase.from('merch').select('*').order('created_at', { ascending: false });
-      grid.innerHTML = '';
-      if (data) {
-        data.forEach(item => {
-          const card = document.createElement('div');
-          card.className = 'photo-card';
-          card.style.backgroundImage = `url('${item.url}')`;
-          card.innerHTML = `
-            <div class="photo-overlay">
-              <span class="photo-title">${item.title}</span>
-              ${currentUser.role === 'director' ? `<span class="photo-delete" onclick="deleteMerch('${item.id}')">&times;</span>` : ''}
-            </div>
-          `;
-          grid.appendChild(card);
-        });
-      }
+      dataCache.merch = data; renderMerch(data);
     }
-
-    window.deleteMerch = async (id) => {
-      if (!confirm('Удалить фото?')) return;
-      await supabase.from('merch').delete().eq('id', id);
-      loadMerch();
-    };
+    function renderMerch(data) {
+      const grid = document.getElementById('merchGrid'); grid.innerHTML = '';
+      if (data) data.forEach(item => {
+        const card = document.createElement('div'); card.className = 'photo-card'; card.style.backgroundImage = `url('${item.url}')`;
+        card.innerHTML = `<div class="photo-overlay"><span class="photo-title">${item.title}</span>${currentUser.role === 'director' ? `<span class="photo-delete" onclick="deleteMerch('${item.id}')">&times;</span>` : ''}</div>`;
+        grid.appendChild(card);
+      });
+    }
+    window.deleteMerch = async (id) => { if (!confirm('Удалить фото?')) return; await supabase.from('merch').delete().eq('id', id); dataCache.merch = null; loadMerch(); };
 
     async function loadManuals() {
-      const list = document.getElementById('manualList');
+      const list = document.getElementById('manualList'); if (dataCache.manuals) { renderManuals(dataCache.manuals); return; }
       list.innerHTML = '<div class="loader">Загрузка...</div>';
       const { data } = await supabase.from('manuals').select('*').order('created_at', { ascending: false });
-      list.innerHTML = '';
-      if (data) {
-        data.forEach(item => {
-          const div = document.createElement('div');
-          div.className = 'manual-item';
-          div.innerHTML = `
-            <div class="manual-info">
-              <span class="manual-icon">📄</span>
-              <div>
-                <div class="manual-name">${item.title}</div>
-                <div class="manual-date">${new Date(item.created_at).toLocaleDateString()}</div>
-              </div>
-            </div>
-            <div style="display:flex; gap:10px;">
-              <a href="${item.url}" target="_blank" class="btn btn-sm">Открыть</a>
-              ${currentUser.role === 'director' ? `<button class="btn btn-sm btn-danger" onclick="deleteManual('${item.id}')">Удалить</button>` : ''}
-            </div>
-          `;
-          list.appendChild(div);
-        });
-      }
+      dataCache.manuals = data; renderManuals(data);
     }
+    function renderManuals(data) {
+      const list = document.getElementById('manualList'); list.innerHTML = '';
+      if (data) data.forEach(item => {
+        const div = document.createElement('div'); div.className = 'manual-item';
+        div.innerHTML = `<div class="manual-info"><span class="manual-icon">📄</span><div><div class="manual-name">${item.title}</div><div class="manual-date">${new Date(item.created_at).toLocaleDateString()}</div></div></div><div style="display:flex; gap:10px;"><a href="${item.url}" target="_blank" class="btn btn-sm">Открыть</a>${currentUser.role === 'director' ? `<button class="btn btn-sm btn-danger" onclick="deleteManual('${item.id}')">Удалить</button>` : ''}</div>`;
+        list.appendChild(div);
+      });
+    }
+    window.deleteManual = async (id) => { if (!confirm('Удалить инструкцию?')) return; await supabase.from('manuals').delete().eq('id', id); dataCache.manuals = null; loadManuals(); };
 
-    window.deleteManual = async (id) => {
-      if (!confirm('Удалить инструкцию?')) return;
-      await supabase.from('manuals').delete().eq('id', id);
-      loadManuals();
-    };
-
-    // === ADMIN ===
     async function loadUsersTable() {
-      const tbody = document.querySelector('#usersTable tbody');
-      if (!tbody) return;
-      await preloadGlobalData();
-      tbody.innerHTML = '';
+      const tbody = document.querySelector('#usersTable tbody'); if (!tbody) return;
+      await preloadGlobalData(); tbody.innerHTML = '';
       globalEmployees.forEach(u => {
-        const tr = document.createElement('tr');
-        const roleNames = { 'director': 'Директор', 'senior_seller': 'Старший продавец', 'seller': 'Продавец' };
-        tr.innerHTML = `
-          <td><b>${u.full_name}</b><br><small style="color:#888">${u.login} | ••••••••</small></td>
-          <td>${roleNames[u.role] || u.role}</td>
-          <td>
-            <button class="btn btn-sm" onclick="openEditUser('${u.id}', '${u.full_name}')">Пароль</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteUserHandler('${u.id}')">Удалить</button>
-          </td>
-        `;
+        const tr = document.createElement('tr'); const roleNames = { 'director': 'Директор', 'senior_seller': 'Старший продавец', 'seller': 'Продавец' };
+        tr.innerHTML = `<td><b>${u.full_name}</b><br><small style="color:#888">${u.login} | ••••••••</small></td><td>${roleNames[u.role] || u.role}</td><td><button class="btn btn-sm" onclick="openEditUser('${u.id}', '${u.full_name}')">Пароль</button><button class="btn btn-sm btn-danger" onclick="deleteUserHandler('${u.id}')">Удалить</button></td>`;
         tbody.appendChild(tr);
       });
     }
+    window.openEditUser = (id, name) => { document.getElementById('editUserId').value = id; document.getElementById('editUserTitle').textContent = `Пароль: ${name}`; document.getElementById('modalEditUser').style.display = 'flex'; };
+    window.deleteUserHandler = async (id) => { if (!confirm('Удалить сотрудника?')) return; await supabase.from('employees').delete().eq('id', id); loadUsersTable(); };
 
-    window.openEditUser = (id, name) => {
-      document.getElementById('editUserId').value = id;
-      document.getElementById('editUserTitle').textContent = `Пароль: ${name}`;
-      document.getElementById('modalEditUser').style.display = 'flex';
-    };
-
-    window.deleteUserHandler = async (id) => {
-      if (!confirm('Удалить сотрудника?')) return;
-      await supabase.from('employees').delete().eq('id', id);
-      loadUsersTable();
-    };
-
-    // === LOGIN & APP INIT ===
-    function showLoginView() {
-      document.getElementById('login-view').style.display = 'flex';
-      document.getElementById('app-view').style.display = 'none';
-      initLoginEvents();
-    }
-
-    async function showAppView() {
-      document.getElementById('login-view').style.display = 'none';
-      document.getElementById('app-view').style.display = 'block';
-      await initApp();
-    }
+    function showLoginView() { document.getElementById('login-view').style.display = 'flex'; document.getElementById('app-view').style.display = 'none'; initLoginEvents(); }
+    async function showAppView() { document.getElementById('login-view').style.display = 'none'; document.getElementById('app-view').style.display = 'block'; await initApp(); }
 
     function initLoginEvents() {
-      const toggleBtn = document.getElementById('togglePassword');
-      const passInput = document.getElementById('loginPassword');
-      const loginBtn = document.getElementById('btnLogin');
-      const loginEmail = document.getElementById('loginEmail');
-      const errBox = document.getElementById('loginErrorMsg');
-
+      const toggleBtn = document.getElementById('togglePassword'), passInput = document.getElementById('loginPassword'), loginBtn = document.getElementById('btnLogin'), loginEmail = document.getElementById('loginEmail'), errBox = document.getElementById('loginErrorMsg');
       loginBtn.onclick = async () => {
-        const login = loginEmail.value.trim();
-        const password = passInput.value.trim();
-        if (!login || !password) return errBox.textContent = 'Заполните поля';
-        loginBtn.disabled = true;
-        loginBtn.textContent = 'Вход...';
-        try {
-          await loginUser(login, password);
-          location.reload();
-        } catch (err) {
-          loginBtn.disabled = false;
-          loginBtn.textContent = 'Войти';
-          errBox.textContent = err.message;
-        }
+        const login = loginEmail.value.trim(), password = passInput.value.trim(); if (!login || !password) return errBox.textContent = 'Заполните поля';
+        loginBtn.disabled = true; loginBtn.textContent = 'Вход...';
+        try { await loginUser(login, password); location.reload(); } catch (err) { loginBtn.disabled = false; loginBtn.textContent = 'Войти'; errBox.textContent = err.message; }
       };
-
-      toggleBtn.onclick = () => {
-        const type = passInput.getAttribute('type') === 'password' ? 'text' : 'password';
-        passInput.setAttribute('type', type);
-      };
-      
+      toggleBtn.onclick = () => { const type = passInput.getAttribute('type') === 'password' ? 'text' : 'password'; passInput.setAttribute('type', type); };
       loginEmail.onkeydown = passInput.onkeydown = (e) => { if (e.key === 'Enter') loginBtn.click(); };
     }
 
@@ -1122,87 +886,41 @@
         const roles = { 'director': 'Директор', 'senior_seller': 'Старший продавец', 'seller': 'Продавец' };
         document.getElementById('headerRole').textContent = roles[currentUser.role] || currentUser.role;
         document.getElementById('headerAvatar').textContent = computeInitials(currentUser.full_name || currentUser.login);
-        if (currentUser.role === 'director') {
-          document.getElementById('adminTab').style.display = 'block';
-          document.getElementById('merchAdminControls').style.display = 'block';
-          document.getElementById('manualsAdminControls').style.display = 'block';
-          loadUsersTable();
-        }
+        if (currentUser.role === 'director') { document.getElementById('adminTab').style.display = 'block'; document.getElementById('merchAdminControls').style.display = 'block'; document.getElementById('manualsAdminControls').style.display = 'block'; loadUsersTable(); }
       }
-
-      window.calendarApp = new Calendar('calendar-wrapper');
-      window.scheduleApp = new ScheduleManager('schedule-manager');
-      await window.scheduleApp.init();
-      loadMerch();
-      loadManuals();
-
-      // TABS
+      window.calendarApp = new Calendar('calendar-wrapper'); window.scheduleApp = new ScheduleManager('schedule-manager'); await window.scheduleApp.init();
+      loadMerch(); loadManuals();
       document.querySelectorAll('.tab').forEach(t => {
         t.onclick = () => {
-          document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-          t.classList.add('active');
+          document.querySelectorAll('.tab').forEach(x => x.classList.remove('active')); t.classList.add('active');
           document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-          const targetId = t.dataset.tab === 'adminTab' ? 'adminTabContent' : t.dataset.tab;
-          document.getElementById(targetId).classList.add('active');
+          const targetId = t.dataset.tab === 'adminTab' ? 'adminTabContent' : t.dataset.tab; document.getElementById(targetId).classList.add('active');
         };
       });
-
-      // PROFILE & THEME
-      const pBtn = document.getElementById('profileBtn');
-      const pMenu = document.getElementById('profileMenu');
+      const pBtn = document.getElementById('profileBtn'), pMenu = document.getElementById('profileMenu');
       pBtn.onclick = (e) => { e.stopPropagation(); pMenu.style.display = pMenu.style.display === 'block' ? 'none' : 'block'; };
       document.addEventListener('click', () => pMenu.style.display = 'none');
       document.getElementById('logoutBtn').onclick = logoutUser;
-      document.getElementById('themeBtn').onclick = () => {
-        document.body.classList.toggle('light-theme');
-        localStorage.setItem('ax_theme', document.body.classList.contains('light-theme') ? 'light' : 'dark');
-      };
+      document.getElementById('themeBtn').onclick = () => { document.body.classList.toggle('light-theme'); localStorage.setItem('ax_theme', document.body.classList.contains('light-theme') ? 'light' : 'dark'); };
       if (localStorage.getItem('ax_theme') === 'light') document.body.classList.add('light-theme');
-
-      // ADMIN ACTIONS
       document.getElementById('btnUpdateUserPass').onclick = async () => {
-        const id = document.getElementById('editUserId').value;
-        const pass = document.getElementById('editUserNewPass').value;
-        if (!pass) return alert('Введите пароль');
-        await supabase.from('employees').update({ password: pass }).eq('id', id);
-        alert('Пароль обновлен');
-        closeModal('modalEditUser');
-        loadUsersTable();
+        const id = document.getElementById('editUserId').value, pass = document.getElementById('editUserNewPass').value; if (!pass) return alert('Введите пароль');
+        await supabase.from('employees').update({ password: pass }).eq('id', id); alert('Пароль обновлен'); closeModal('modalEditUser'); loadUsersTable();
       };
-
       document.getElementById('btnCreateUser').onclick = async () => {
-        const login = document.getElementById('newUserEmail').value.trim();
-        const password = document.getElementById('newUserPass').value.trim();
-        const full_name = document.getElementById('newUserName').value.trim();
-        const role = document.getElementById('newUserRole').value;
-        if (!login || !password || !full_name) return alert('Заполните поля');
-        await supabase.from('employees').insert({ login, password, full_name, role });
-        alert('Сотрудник создан');
-        loadUsersTable();
+        const login = document.getElementById('newUserEmail').value.trim(), password = document.getElementById('newUserPass').value.trim(), full_name = document.getElementById('newUserName').value.trim(), role = document.getElementById('newUserRole').value;
+        if (!login || !password || !full_name) return alert('Заполните поля'); await supabase.from('employees').insert({ login, password, full_name, role }); alert('Сотрудник создан'); loadUsersTable();
       };
-
       document.getElementById('btnAddMerch').onclick = async () => {
-        const title = document.getElementById('merchTitle').value;
-        const url = document.getElementById('merchUrl').value;
-        if (!title || !url) return alert('Заполните поля');
-        await supabase.from('merch').insert({ title, url });
-        loadMerch();
+        const title = document.getElementById('merchTitle').value, url = document.getElementById('merchUrl').value; if (!title || !url) return alert('Заполните поля');
+        await supabase.from('merch').insert({ title, url }); dataCache.merch = null; loadMerch();
       };
-
       document.getElementById('btnAddManual').onclick = async () => {
-        const title = document.getElementById('manualTitle').value;
-        const url = document.getElementById('manualUrl').value;
-        if (!title || !url) return alert('Заполните поля');
-        await supabase.from('manuals').insert({ title, url });
-        loadManuals();
+        const title = document.getElementById('manualTitle').value, url = document.getElementById('manualUrl').value; if (!title || !url) return alert('Заполните поля');
+        await supabase.from('manuals').insert({ title, url }); dataCache.manuals = null; loadManuals();
       };
     }
-
-    document.addEventListener('DOMContentLoaded', () => {
-      currentUser = getCurrentUser();
-      if (currentUser) showAppView();
-      else showLoginView();
-    });
+    document.addEventListener('DOMContentLoaded', () => { currentUser = getCurrentUser(); if (currentUser) showAppView(); else showLoginView(); });
     })();
   </script>
 </body>
