@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>A | X System | Final</title>
+  <title>A | X System | Ultimate</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
   
@@ -361,6 +361,10 @@
       overflow: hidden;
       transition: transform 0.3s;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #1a1a1a;
     }
     .photo-card:hover { transform: scale(1.02); }
     .photo-overlay {
@@ -368,9 +372,11 @@
       background: linear-gradient(transparent, rgba(0,0,0,0.9)); 
       padding: 20px; 
       display: flex; justify-content: space-between; align-items: flex-end;
+      z-index: 5;
     }
     .photo-title { font-size: 14px; font-weight: 600; color: #fff; }
     .photo-delete { color: #ff4444; cursor: pointer; font-size: 18px; }
+    .file-icon-large { font-size: 64px; opacity: 0.5; }
 
     .manual-list { display: flex; flex-direction: column; gap: 10px; }
     .manual-item {
@@ -411,6 +417,25 @@
       padding: 10px;
       border-radius: var(--radius);
       color: var(--text-main);
+    }
+
+    .rls-fix-box {
+      background: #1a1a1a;
+      border: 1px solid #ffeb3b;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #ffeb3b;
+    }
+    .rls-fix-box code {
+      display: block;
+      background: #000;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 4px;
+      color: #fff;
+      word-break: break-all;
     }
 
     @media (max-width: 768px) {
@@ -487,10 +512,10 @@
     <!-- TAB: MERCH -->
     <div id="merchTab" class="tab-content">
       <div id="merchAdminControls" class="admin-controls" style="display:none;">
-        <h3>Добавить фото (Bucket: photos)</h3>
+        <h3>Добавить в Мерчендайзинг (Bucket: photos)</h3>
         <div class="file-input-wrapper">
-          <input type="text" id="merchTitle" placeholder="Название фото" class="input-field">
-          <input type="file" id="merchFile" accept="image/*">
+          <input type="text" id="merchTitle" placeholder="Название (напр. Витрина 1)" class="input-field">
+          <input type="file" id="merchFile">
           <button class="btn btn-primary" id="btnAddMerch">Загрузить</button>
         </div>
       </div>
@@ -503,7 +528,7 @@
         <h3>Добавить инструкцию (Bucket: docs)</h3>
         <div class="file-input-wrapper">
           <input type="text" id="manualTitle" placeholder="Название инструкции" class="input-field">
-          <input type="file" id="manualFile" accept=".pdf,.doc,.docx,.txt">
+          <input type="file" id="manualFile">
           <button class="btn btn-primary" id="btnAddManual">Загрузить</button>
         </div>
       </div>
@@ -512,6 +537,16 @@
 
     <!-- TAB: ADMIN -->
     <div id="adminTabContent" class="tab-content">
+      <div class="rls-fix-box">
+        <b>⚠️ Если загрузка не работает (ошибка RLS):</b>
+        Скопируйте этот код и выполните его в <b>SQL Editor</b> вашего Supabase:
+        <code>
+          ALTER TABLE employees DISABLE ROW LEVEL SECURITY;
+          ALTER TABLE schedule DISABLE ROW LEVEL SECURITY;
+          ALTER TABLE merch DISABLE ROW LEVEL SECURITY;
+          ALTER TABLE manuals DISABLE ROW LEVEL SECURITY;
+        </code>
+      </div>
       <div class="admin-controls">
         <h3>Добавить сотрудника</h3>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
@@ -747,7 +782,10 @@
             const shiftId = record ? record.shift_id : null;
             if (shiftId) {
               dayCounts[d]++; const sInfo = this.shiftTypes.find(s => s.id === shiftId);
-              if (sInfo) totalHours += parseFloat(sInfo.work_hours);
+              if (sInfo) {
+                const h = parseFloat(sInfo.work_hours);
+                if (!isNaN(h)) totalHours += h;
+              }
             } else totalDaysOff++;
             if (currentUser.role === 'director' && this.editMode) {
               html += `<td><select class="cell-input ${shiftId ? 'cell-work' : 'cell-b'}" data-user-id="${user.id}" data-date="${dateStr}" onchange="window.handleShiftChange(this)">
@@ -797,13 +835,20 @@
     function renderMerch(data) {
       const grid = document.getElementById('merchGrid'); grid.innerHTML = '';
       if (data) data.forEach(item => {
-        const card = document.createElement('div'); card.className = 'photo-card'; card.style.backgroundImage = `url('${item.url}')`;
-        card.innerHTML = `<div class="photo-overlay"><span class="photo-title">${item.title}</span>${currentUser.role === 'director' ? `<span class="photo-delete" onclick="deleteMerch('${item.id}', '${item.url}')">&times;</span>` : ''}</div>`;
+        const card = document.createElement('div'); card.className = 'photo-card';
+        const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(item.url);
+        if (isImage) {
+          card.style.backgroundImage = `url('${item.url}')`;
+        } else {
+          card.innerHTML = `<div class="file-icon-large">📄</div>`;
+        }
+        card.onclick = () => window.open(item.url, '_blank');
+        card.innerHTML += `<div class="photo-overlay"><span class="photo-title">${item.title}</span>${currentUser.role === 'director' ? `<span class="photo-delete" onclick="event.stopPropagation(); deleteMerch('${item.id}', '${item.url}')">&times;</span>` : ''}</div>`;
         grid.appendChild(card);
       });
     }
     window.deleteMerch = async (id, url) => {
-      if (!confirm('Удалить фото?')) return;
+      if (!confirm('Удалить?')) return;
       try {
         const fileName = url.split('/').pop();
         await supabase.storage.from('photos').remove([fileName]);
@@ -909,8 +954,8 @@
           const url = await uploadToSupabase('photos', file);
           await supabase.from('merch').insert({ title, url });
           dataCache.merch = null; loadMerch();
-          alert('Фото загружено!');
-        } catch (e) { alert('Ошибка: ' + e.message); }
+          alert('Загружено!');
+        } catch (e) { alert('Ошибка RLS или Storage: ' + e.message); }
         finally { btn.disabled = false; btn.textContent = 'Загрузить'; }
       };
 
@@ -925,7 +970,7 @@
           await supabase.from('manuals').insert({ title, url });
           dataCache.manuals = null; loadManuals();
           alert('Инструкция загружена!');
-        } catch (e) { alert('Ошибка: ' + e.message); }
+        } catch (e) { alert('Ошибка RLS или Storage: ' + e.message); }
         finally { btn.disabled = false; btn.textContent = 'Загрузить'; }
       };
     }
