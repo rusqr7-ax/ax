@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>A | X System | Ultimate</title>
+  <title>A | X System | Fixed Final</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
   
@@ -781,7 +781,7 @@
             const record = this.scheduleData.find(s => s.user_id === user.id && s.date === dateStr);
             const shiftId = record ? record.shift_id : null;
             if (shiftId) {
-              dayCounts[d]++; const sInfo = this.shiftTypes.find(s => s.id === shiftId);
+              dayCounts[d]++; const sInfo = this.shiftTypes.find(s => String(s.id) === String(shiftId));
               if (sInfo) {
                 const h = parseFloat(sInfo.work_hours);
                 if (!isNaN(h)) totalHours += h;
@@ -789,7 +789,7 @@
             } else totalDaysOff++;
             if (currentUser.role === 'director' && this.editMode) {
               html += `<td><select class="cell-input ${shiftId ? 'cell-work' : 'cell-b'}" data-user-id="${user.id}" data-date="${dateStr}" onchange="window.handleShiftChange(this)">
-                        <option value="">B</option>${this.shiftTypes.map(st => `<option value="${st.id}" ${shiftId === st.id ? 'selected' : ''}>${st.id}</option>`).join('')}</select></td>`;
+                        <option value="">B</option>${this.shiftTypes.map(st => `<option value="${st.id}" ${String(shiftId) === String(st.id) ? 'selected' : ''}>${st.id}</option>`).join('')}</select></td>`;
             } else html += `<td><div class="cell-input ${shiftId ? 'cell-work' : 'cell-b'}">${shiftId || 'B'}</div></td>`;
           }
           html += `<td><b>${totalHours}</b></td><td>${totalDaysOff}</td>`; tr.innerHTML = html; tbody.appendChild(tr);
@@ -818,8 +818,17 @@
     };
 
     // === STORAGE UPLOAD LOGIC ===
+    function sanitizeFileName(name) {
+      const ext = name.split('.').pop();
+      const base = name.split('.').slice(0, -1).join('.');
+      // Заменяем всё кроме латиницы и цифр на подчеркивание
+      const cleanBase = base.replace(/[^a-zA-Z0-9]/g, '_');
+      return `${cleanBase}.${ext}`;
+    }
+
     async function uploadToSupabase(bucket, file) {
-      const fileName = `${Date.now()}_${file.name}`;
+      const cleanName = sanitizeFileName(file.name);
+      const fileName = `${Date.now()}_${cleanName}`;
       const { data, error } = await supabase.storage.from(bucket).upload(fileName, file);
       if (error) throw error;
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(fileName);
@@ -955,7 +964,7 @@
           await supabase.from('merch').insert({ title, url });
           dataCache.merch = null; loadMerch();
           alert('Загружено!');
-        } catch (e) { alert('Ошибка RLS или Storage: ' + e.message); }
+        } catch (e) { alert('Ошибка: ' + e.message); }
         finally { btn.disabled = false; btn.textContent = 'Загрузить'; }
       };
 
@@ -970,7 +979,7 @@
           await supabase.from('manuals').insert({ title, url });
           dataCache.manuals = null; loadManuals();
           alert('Инструкция загружена!');
-        } catch (e) { alert('Ошибка RLS или Storage: ' + e.message); }
+        } catch (e) { alert('Ошибка: ' + e.message); }
         finally { btn.disabled = false; btn.textContent = 'Загрузить'; }
       };
     }
